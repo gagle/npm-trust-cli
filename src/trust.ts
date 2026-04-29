@@ -1,8 +1,22 @@
-import { execSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
-import type { TrustResult, TrustSummary } from "./interfaces/cli.interface.js";
+import type {
+  ConfigureTrustOptions,
+  ListTrustOptions,
+  Logger,
+  TrustResult,
+  TrustSummary,
+} from "./interfaces/cli.interface.js";
 
-const NPM_BIN = join(dirname(process.execPath), "npm");
+function resolveNpmBin(): string {
+  return process.env.NPM_TRUST_CLI_NPM ?? join(dirname(process.execPath), "npm");
+}
+
+const CONSOLE_LOGGER: Logger = {
+  log: (message: string): void => {
+    console.log(message);
+  },
+};
 
 type OutputKind = "already" | "not_published" | "needs_auth" | "error";
 
@@ -20,92 +34,110 @@ function classifyOutput(output: string): OutputKind {
   return "error";
 }
 
+function buildTrustArgs(pkg: string, repo: string, workflow: string): Array<string> {
+  return ["trust", "github", pkg, "--repo", repo, "--file", workflow, "--yes"];
+}
+
+function buildSpawnEnv(otp: string | undefined): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, npm_config_loglevel: "error" };
+  if (otp) {
+    env.NPM_CONFIG_OTP = otp;
+  }
+  return env;
+}
+
+interface CapturedRun {
+  readonly output: string;
+  readonly exitCode: number;
+}
+
 function runCaptured(
   pkg: string,
   repo: string,
   workflow: string,
-): { readonly output: string; readonly exitCode: number } {
-  try {
-    const output = execSync(
-      `"${NPM_BIN}" trust github "${pkg}" --repo "${repo}" --file "${workflow}" --yes`,
-      {
-        encoding: "utf-8",
-        env: { ...process.env, npm_config_loglevel: "error" },
-        stdio: ["pipe", "pipe", "pipe"],
-      },
-    );
-    return { output, exitCode: 0 };
-  } catch (error: unknown) {
-    const execError = error as {
-      stdout?: string;
-      stderr?: string;
-      status?: number;
-    };
-    const output = `${execError.stdout ?? ""}${execError.stderr ?? ""}`;
-    return { output, exitCode: execError.status ?? 1 };
-  }
+  otp: string | undefined,
+): CapturedRun {
+  const result = spawnSync(resolveNpmBin(), buildTrustArgs(pkg, repo, workflow), {
+    encoding: "utf-8",
+    env: buildSpawnEnv(otp),
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
+  return { output, exitCode: result.status ?? 1 };
 }
 
-function runInteractive(pkg: string, repo: string, workflow: string): number {
-  const result = spawnSync(
-    NPM_BIN,
-    ["trust", "github", pkg, "--repo", repo, "--file", workflow, "--yes"],
-    {
-      env: { ...process.env, npm_config_loglevel: "error" },
-      stdio: ["inherit", "inherit", "ignore"],
-    },
-  );
+function runInteractive(
+  pkg: string,
+  repo: string,
+  workflow: string,
+  otp: string | undefined,
+): number {
+  const result = spawnSync(resolveNpmBin(), buildTrustArgs(pkg, repo, workflow), {
+    env: buildSpawnEnv(otp),
+    stdio: ["inherit", "inherit", "ignore"],
+  });
   return result.status ?? 1;
+}
+
+function classifyCaptured(captured: CapturedRun): TrustResult | "needs_auth" {
+  if (captured.exitCode === 0) {
+    return "configured";
+  }
+  const kind = classifyOutput(captured.output);
+  if (kind === "already") {
+    return "already";
+  }
+  if (kind === "not_published") {
+    return "not_published";
+  }
+  if (kind === "needs_auth") {
+    return "needs_auth";
+  }
+  return "error";
+}
+
+function handleAuthRetry(
+  pkg: string,
+  repo: string,
+  workflow: string,
+  otp: string | undefined,
+): TrustResult {
+  if (otp) {
+    return "auth_failed";
+  }
+  if (!process.stdout.isTTY) {
+    return "auth_failed";
+  }
+
+  process.stdout.write(
+    "\n2FA required. Complete the browser-based authentication when prompted.\n\n",
+  );
+
+  const interactiveExitCode = runInteractive(pkg, repo, workflow, otp);
+  if (interactiveExitCode === 0) {
+    return "configured";
+  }
+
+  const retry = runCaptured(pkg, repo, workflow, otp);
+  const retryKind = classifyCaptured(retry);
+  if (retryKind === "needs_auth") {
+    return "auth_failed";
+  }
+  return retryKind;
 }
 
 function trustPackage(
   pkg: string,
   repo: string,
   workflow: string,
+  otp: string | undefined,
 ): TrustResult {
-  const { output, exitCode } = runCaptured(pkg, repo, workflow);
-
-  if (exitCode === 0) {
-    return "configured";
-  }
-
-  const kind = classifyOutput(output);
-
-  if (kind === "already") {
-    return "already";
-  }
-
-  if (kind === "not_published") {
-    return "not_published";
-  }
-
+  const captured = runCaptured(pkg, repo, workflow, otp);
+  const kind = classifyCaptured(captured);
   if (kind === "needs_auth") {
-    process.stdout.write(
-      "\n2FA required. Complete the browser-based authentication when prompted.\n\n",
-    );
-
-    const interactiveExitCode = runInteractive(pkg, repo, workflow);
-    if (interactiveExitCode === 0) {
-      return "configured";
-    }
-
-    const retry = runCaptured(pkg, repo, workflow);
-    if (retry.exitCode === 0) {
-      return "configured";
-    }
-
-    const retryKind = classifyOutput(retry.output);
-    if (retryKind === "already") {
-      return "already";
-    }
-    if (retryKind === "not_published") {
-      return "not_published";
-    }
-
-    return "auth_failed";
+    return handleAuthRetry(pkg, repo, workflow, otp);
   }
-
-  return "error";
+  return kind;
 }
 
 function formatResult(pkg: string, result: TrustResult): string {
@@ -124,20 +156,15 @@ function formatResult(pkg: string, result: TrustResult): string {
   }
 }
 
-export function configureTrust(
-  packages: ReadonlyArray<string>,
-  repo: string,
-  workflow: string,
-  dryRun: boolean,
-): TrustSummary {
-  console.log(
-    `Configuring OIDC trusted publishing for ${packages.length} packages`,
-  );
-  console.log(`Repo: ${repo} | Workflow: ${workflow}`);
+export function configureTrust(options: ConfigureTrustOptions): TrustSummary {
+  const { packages, repo, workflow, dryRun = false, otp, logger = CONSOLE_LOGGER } = options;
+
+  logger.log(`Configuring OIDC trusted publishing for ${packages.length} packages`);
+  logger.log(`Repo: ${repo} | Workflow: ${workflow}`);
   if (dryRun) {
-    console.log("(dry run — no changes will be made)");
+    logger.log("(dry run — no changes will be made)");
   }
-  console.log("");
+  logger.log("");
 
   let configured = 0;
   let already = 0;
@@ -146,13 +173,13 @@ export function configureTrust(
 
   for (const pkg of packages) {
     if (dryRun) {
-      console.log(`${pkg.padEnd(30)} (dry run)`);
+      logger.log(`${pkg.padEnd(30)} (dry run)`);
       continue;
     }
 
-    const result = trustPackage(pkg, repo, workflow);
+    const result = trustPackage(pkg, repo, workflow, otp);
 
-    console.log(formatResult(pkg, result));
+    logger.log(formatResult(pkg, result));
 
     if (result === "configured") {
       configured++;
@@ -161,8 +188,8 @@ export function configureTrust(
     } else if (result === "auth_failed") {
       failed++;
       failedPackages.push(pkg);
-      console.log("");
-      console.log("Authentication failed. Re-run after authenticating.");
+      logger.log("");
+      logger.log("Authentication failed. Re-run after authenticating.");
       break;
     } else {
       failed++;
@@ -170,38 +197,38 @@ export function configureTrust(
     }
   }
 
-  console.log("");
-  console.log(
-    `Done: ${configured} configured, ${already} already set, ${failed} failed`,
-  );
+  logger.log("");
+  logger.log(`Done: ${configured} configured, ${already} already set, ${failed} failed`);
 
   if (failedPackages.length > 0) {
-    console.log("");
-    console.log("Failed packages (publish first, then re-run):");
+    logger.log("");
+    logger.log("Failed packages (publish first, then re-run):");
     for (const pkg of failedPackages) {
-      console.log(`  - ${pkg}`);
+      logger.log(`  - ${pkg}`);
     }
   }
 
   return { configured, already, failed, failedPackages };
 }
 
-export function listTrust(packages: ReadonlyArray<string>): void {
-  console.log(`Checking trust status for ${packages.length} packages`);
-  console.log("");
+export function listTrust(options: ListTrustOptions): void {
+  const { packages, logger = CONSOLE_LOGGER } = options;
+
+  logger.log(`Checking trust status for ${packages.length} packages`);
+  logger.log("");
 
   for (const pkg of packages) {
-    try {
-      const output = execSync(`"${NPM_BIN}" trust list "${pkg}"`, {
-        encoding: "utf-8",
-        env: { ...process.env, npm_config_loglevel: "error" },
-        stdio: ["pipe", "pipe", "pipe"],
-      });
-      console.log(
-        `${pkg.padEnd(30)} ${output.trim() || "(no trust configured)"}`,
-      );
-    } catch {
-      console.log(`${pkg.padEnd(30)} (no trust configured)`);
+    const result = spawnSync(resolveNpmBin(), ["trust", "list", pkg], {
+      encoding: "utf-8",
+      env: { ...process.env, npm_config_loglevel: "error" },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    if (result.status === 0) {
+      const output = result.stdout.trim();
+      logger.log(`${pkg.padEnd(30)} ${output || "(no trust configured)"}`);
+    } else {
+      logger.log(`${pkg.padEnd(30)} (no trust configured)`);
     }
   }
 }

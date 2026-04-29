@@ -1,6 +1,6 @@
 {
   "name": "npm-trust-cli",
-  "version": "0.0.1",
+  "version": "0.0.0",
   "description": "Bulk-configure npm OIDC Trusted Publishing for all packages in a scope",
   "type": "module",
   "bin": {
@@ -19,11 +19,14 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest run --coverage",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "lint": "eslint src/",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit"
   },
   "engines": {
-    "node": ">=18.3.0"
+    "node": ">=24.0.0"
   },
   "keywords": [
     "npm",
@@ -40,9 +43,16 @@
     "url": "https://github.com/gagle/npm-trust-cli"
   },
   "devDependencies": {
+    "@eslint/js": "^9.18.0",
     "@types/node": "^25.6.0",
     "@vitest/coverage-v8": "^4.0.0",
+    "eslint": "^9.18.0",
+    "eslint-config-prettier": "^10.0.0",
+    "execa": "^9.5.0",
+    "msw": "^2.7.0",
+    "prettier": "^3.4.0",
     "typescript": "^5.8.0",
+    "typescript-eslint": "^8.20.0",
     "vitest": "^4.0.0"
   }
 }

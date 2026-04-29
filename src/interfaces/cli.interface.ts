@@ -5,18 +5,32 @@ export interface CliOptions {
   readonly workflow?: string;
   readonly list?: boolean;
   readonly dryRun?: boolean;
+  readonly otp?: string;
 }
 
-export type TrustResult =
-  | "configured"
-  | "already"
-  | "not_published"
-  | "auth_failed"
-  | "error";
+export type TrustResult = "configured" | "already" | "not_published" | "auth_failed" | "error";
 
 export interface TrustSummary {
   readonly configured: number;
   readonly already: number;
   readonly failed: number;
   readonly failedPackages: ReadonlyArray<string>;
+}
+
+export interface ConfigureTrustOptions {
+  readonly packages: ReadonlyArray<string>;
+  readonly repo: string;
+  readonly workflow: string;
+  readonly dryRun?: boolean;
+  readonly otp?: string;
+  readonly logger?: Logger;
+}
+
+export interface ListTrustOptions {
+  readonly packages: ReadonlyArray<string>;
+  readonly logger?: Logger;
+}
+
+export interface Logger {
+  readonly log: (message: string) => void;
 }

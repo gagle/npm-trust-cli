@@ -1,0 +1,37 @@
+#!/usr/bin/env node
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+
+const args = process.argv.slice(2);
+const logPath = process.env.FAKE_NPM_LOG;
+const scriptPath = process.env.FAKE_NPM_SCRIPT;
+const counterPath = process.env.FAKE_NPM_COUNTER;
+
+if (logPath) {
+  appendFileSync(logPath, JSON.stringify(args) + "\n");
+}
+
+if (args[0] === "--version") {
+  const fakeVersion = process.env.FAKE_NPM_VERSION ?? "11.5.1";
+  process.stdout.write(fakeVersion + "\n");
+  process.exit(0);
+}
+
+const script =
+  scriptPath && existsSync(scriptPath)
+    ? JSON.parse(readFileSync(scriptPath, "utf-8"))
+    : { responses: [] };
+
+const responses = script.responses ?? [];
+let index = 0;
+if (counterPath && existsSync(counterPath)) {
+  index = Number(readFileSync(counterPath, "utf-8")) || 0;
+}
+if (counterPath) {
+  writeFileSync(counterPath, String(index + 1));
+}
+
+const response = responses[index] ?? script.default ?? { exitCode: 0, stdout: "", stderr: "" };
+
+if (response.stdout) process.stdout.write(response.stdout);
+if (response.stderr) process.stderr.write(response.stderr);
+process.exit(response.exitCode ?? 0);

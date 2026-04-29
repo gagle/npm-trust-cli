@@ -1,4 +1,18 @@
-# npm-trust-cli
+<h1 align="center">npm-trust-cli</h1>
+
+<p align="center">
+  Bulk-configure npm OIDC Trusted Publishing for every package in your npm scope.
+</p>
+
+<p align="center">
+  <a href="https://github.com/gagle/npm-trust-cli/blob/main/LICENSE"><img src="https://img.shields.io/github/license/gagle/npm-trust-cli" alt="license" /></a>
+  <a href="https://github.com/gagle/npm-trust-cli/actions"><img src="https://img.shields.io/github/actions/workflow/status/gagle/npm-trust-cli/ci.yml" alt="CI" /></a>
+  <a href="https://www.npmjs.com/package/npm-trust-cli"><img src="https://img.shields.io/npm/v/npm-trust-cli" alt="npm version" /></a>
+  <a href="https://www.npmjs.com/package/npm-trust-cli"><img src="https://img.shields.io/npm/dm/npm-trust-cli" alt="npm downloads" /></a>
+  <a href="https://nodejs.org"><img src="https://img.shields.io/node/v/npm-trust-cli" alt="node version" /></a>
+</p>
+
+---
 
 ## The problem
 
@@ -24,7 +38,7 @@ npm OIDC Trusted Publishing lets GitHub Actions publish packages without secrets
 
 ## Requirements
 
-- Node.js >= 18.3.0
+- Node.js >= 24.0.0
 - npm >= 11.5.1 (for `npm trust` support)
 - 2FA enabled on your npm account
 - Write access to the packages you're configuring
@@ -57,15 +71,16 @@ npx npm-trust-cli --scope @myorg --repo owner/repo --workflow release.yml --dry-
 
 ## Options
 
-| Flag | Description |
-|------|-------------|
-| `--scope <scope>` | npm org scope (e.g. `@myorg`) — auto-discovers all published packages |
-| `--packages <pkg...>` | explicit package names (alternative to `--scope`) |
-| `--repo <owner/repo>` | GitHub repository |
-| `--workflow <file>` | GitHub Actions workflow filename (e.g. `release.yml`) |
-| `--list` | list current trust status instead of configuring |
-| `--dry-run` | show what would be done without making changes |
-| `--help` | show help message |
+| Flag                  | Description                                                           |
+| --------------------- | --------------------------------------------------------------------- |
+| `--scope <scope>`     | npm org scope (e.g. `@myorg`) — auto-discovers all published packages |
+| `--packages <pkg...>` | explicit package names (alternative to `--scope`)                     |
+| `--repo <owner/repo>` | GitHub repository                                                     |
+| `--workflow <file>`   | GitHub Actions workflow filename (e.g. `release.yml`)                 |
+| `--list`              | list current trust status instead of configuring                      |
+| `--dry-run`           | show what would be done without making changes                        |
+| `--otp <code>`        | one-time password for non-interactive 2FA (CI use)                    |
+| `--help`              | show help message                                                     |
 
 ## Example output
 
@@ -85,6 +100,143 @@ Done: 2 configured, 9 already set, 1 failed
 
 Failed packages (publish first, then re-run):
   - @myorg/new-pkg
+```
+
+## Programmatic usage
+
+`npm-trust-cli` is published as a dual CLI + library. The same package exposes a typed public API for use inside other tools, scripts, or CIs.
+
+```ts
+import {
+  configureTrust,
+  discoverPackages,
+  listTrust,
+  runCli,
+} from "npm-trust-cli";
+```
+
+### `discoverPackages(scope)`
+
+Discovers all published packages in an npm scope by paginating the public registry search API.
+
+| Parameter | Type     | Description                                                            |
+| --------- | -------- | ---------------------------------------------------------------------- |
+| `scope`   | `string` | The npm scope (with or without leading `@`, e.g. `@myorg` or `myorg`). |
+
+**Returns:** `Promise<Array<string>>` — sorted package names in the scope.
+
+**Throws** if the registry response is malformed, the registry URL is invalid, or the request times out (15 s).
+
+```ts
+const packages = await discoverPackages("@myorg");
+```
+
+### `configureTrust(options)`
+
+Runs `npm trust github <pkg> --repo <r> --file <w> --yes` for every package and aggregates the results.
+
+| Option         | Type                       | Default            | Description                                                              |
+| -------------- | -------------------------- | ------------------ | ------------------------------------------------------------------------ |
+| `packages`     | `ReadonlyArray<string>`    | (required)         | Package names to configure.                                              |
+| `repo`         | `string`                   | (required)         | GitHub `owner/repo`.                                                     |
+| `workflow`     | `string`                   | (required)         | GitHub Actions workflow file (`*.yml` / `*.yaml`).                       |
+| `dryRun`       | `boolean`                  | `false`            | Print what would happen without invoking npm.                            |
+| `otp`          | `string \| undefined`      | `undefined`        | 6-8 digit OTP. When provided, routed via `NPM_CONFIG_OTP` env (not argv) so it never appears in the process list. |
+| `logger`       | `Logger`                   | `console`          | `{ log, error }` — supply a capturing logger to suppress stdout.         |
+
+**Returns:** `TrustSummary`
+
+```ts
+interface TrustSummary {
+  readonly configured: number;
+  readonly already: number;
+  readonly failed: number;
+  readonly failedPackages: ReadonlyArray<string>;
+}
+```
+
+```ts
+const summary = configureTrust({
+  packages: ["@myorg/foo", "@myorg/bar"],
+  repo: "owner/repo",
+  workflow: "release.yml",
+  otp: process.env.NPM_OTP,
+});
+
+if (summary.failed > 0) {
+  console.error("Failed:", summary.failedPackages);
+  process.exit(1);
+}
+```
+
+### `listTrust(options)`
+
+Runs `npm trust list <pkg>` for each package and prints the current trust configuration.
+
+| Option     | Type                    | Default    | Description                                |
+| ---------- | ----------------------- | ---------- | ------------------------------------------ |
+| `packages` | `ReadonlyArray<string>` | (required) | Package names to query.                    |
+| `logger`   | `Logger`                | `console`  | `{ log, error }` — destination for output. |
+
+**Returns:** `void`.
+
+```ts
+listTrust({ packages: await discoverPackages("@myorg") });
+```
+
+### `runCli(argv, logger?)`
+
+The same entry point used by the `bin` script. Useful for embedding the full CLI behaviour inside larger tools without spawning a child process. Returns the exit code instead of calling `process.exit`.
+
+| Parameter | Type                         | Default   | Description                                                       |
+| --------- | ---------------------------- | --------- | ----------------------------------------------------------------- |
+| `argv`    | `ReadonlyArray<string>`      | (required) | The argument list, equivalent to `process.argv.slice(2)`.        |
+| `logger`  | `Logger`                     | `console` | `{ log, error }` — supply a capturing logger to suppress output. |
+
+**Returns:** `Promise<number>` — process exit code.
+
+```ts
+const code = await runCli(["--scope", "@myorg", "--list"]);
+process.exit(code);
+```
+
+## Environment variables
+
+| Variable                  | Default                       | Description                                                                                                                                       |
+| ------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NPM_TRUST_CLI_NPM`       | `<dirname(process.execPath)>/npm` | Override the path to the `npm` binary. Used in tests; rarely needed in production.                                                            |
+| `NPM_TRUST_CLI_REGISTRY`  | `https://registry.npmjs.org`  | Override the registry used for package discovery. Must be `https://...`, or `http://localhost` / `http://127.0.0.1` for local mirrors and tests. |
+
+## GitHub Actions
+
+The `--list` path is fully non-interactive and works as-is for periodic auditing:
+
+```yaml
+name: Audit OIDC trust
+on:
+  schedule:
+    - cron: "0 9 * * 1"
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npx npm-trust-cli --scope @myorg --list
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+```
+
+For configuring packages from CI (e.g. one-time OIDC bootstrap), pass `--otp` to skip the interactive 2FA prompt:
+
+```yaml
+- run: |
+    npx npm-trust-cli \
+      --scope @myorg \
+      --repo ${{ github.repository }} \
+      --workflow release.yml \
+      --otp ${{ secrets.NPM_OTP }}
 ```
 
 ## License
