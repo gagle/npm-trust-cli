@@ -155,6 +155,12 @@ export function configureTrust(
       configured++;
     } else if (result === "already") {
       already++;
+    } else if (result === "auth_failed") {
+      failed++;
+      failedPackages.push(pkg);
+      console.log("");
+      console.log("Authentication failed. Re-run after authenticating.");
+      break;
     } else {
       failed++;
       failedPackages.push(pkg);
