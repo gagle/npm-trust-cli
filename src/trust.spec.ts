@@ -90,16 +90,16 @@ describe("configureTrust", () => {
     });
   });
 
-  describe("when npm trust succeeds for a single package", () => {
+  describe("when npm trust succeeds for a single package with NPM_CONFIG_OTP set", () => {
     let summary: TrustSummary;
 
     beforeEach(() => {
+      vi.stubEnv("NPM_CONFIG_OTP", "123456");
       spawnSyncMock.mockReturnValueOnce(ok());
       summary = configureTrust({
         packages: ["@x/a"],
         repo: "o/r",
         workflow: "w.yml",
-        otp: "123456",
         logger: createLogger(),
       });
     });
@@ -120,7 +120,7 @@ describe("configureTrust", () => {
       );
     });
 
-    it("should route the OTP through NPM_CONFIG_OTP env (not argv)", () => {
+    it("should inherit NPM_CONFIG_OTP from process.env into the spawned env", () => {
       expect(spawnSyncMock).toHaveBeenCalledWith(
         expect.any(String),
         expect.anything(),
@@ -223,16 +223,16 @@ describe("configureTrust", () => {
     });
   });
 
-  describe("when 2FA is required and an --otp was supplied", () => {
+  describe("when 2FA is required and NPM_CONFIG_OTP is already set in env", () => {
     let summary: TrustSummary;
 
     beforeEach(() => {
+      vi.stubEnv("NPM_CONFIG_OTP", "wrong");
       spawnSyncMock.mockReturnValueOnce(fail("EOTP one-time password required"));
       summary = configureTrust({
         packages: ["@x/a", "@x/b"],
         repo: "o/r",
         workflow: "w.yml",
-        otp: "wrong",
         logger: createLogger(),
       });
     });

@@ -38,12 +38,8 @@ function buildTrustArgs(pkg: string, repo: string, workflow: string): Array<stri
   return ["trust", "github", pkg, "--repo", repo, "--file", workflow, "--yes"];
 }
 
-function buildSpawnEnv(otp: string | undefined): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env, npm_config_loglevel: "error" };
-  if (otp) {
-    env.NPM_CONFIG_OTP = otp;
-  }
-  return env;
+function buildSpawnEnv(): NodeJS.ProcessEnv {
+  return { ...process.env, npm_config_loglevel: "error" };
 }
 
 interface CapturedRun {
@@ -51,29 +47,19 @@ interface CapturedRun {
   readonly exitCode: number;
 }
 
-function runCaptured(
-  pkg: string,
-  repo: string,
-  workflow: string,
-  otp: string | undefined,
-): CapturedRun {
+function runCaptured(pkg: string, repo: string, workflow: string): CapturedRun {
   const result = spawnSync(resolveNpmBin(), buildTrustArgs(pkg, repo, workflow), {
     encoding: "utf-8",
-    env: buildSpawnEnv(otp),
+    env: buildSpawnEnv(),
     stdio: ["pipe", "pipe", "pipe"],
   });
   const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
   return { output, exitCode: result.status ?? 1 };
 }
 
-function runInteractive(
-  pkg: string,
-  repo: string,
-  workflow: string,
-  otp: string | undefined,
-): number {
+function runInteractive(pkg: string, repo: string, workflow: string): number {
   const result = spawnSync(resolveNpmBin(), buildTrustArgs(pkg, repo, workflow), {
-    env: buildSpawnEnv(otp),
+    env: buildSpawnEnv(),
     stdio: ["inherit", "inherit", "ignore"],
   });
   return result.status ?? 1;
@@ -96,13 +82,8 @@ function classifyCaptured(captured: CapturedRun): TrustResult | "needs_auth" {
   return "error";
 }
 
-function handleAuthRetry(
-  pkg: string,
-  repo: string,
-  workflow: string,
-  otp: string | undefined,
-): TrustResult {
-  if (otp) {
+function handleAuthRetry(pkg: string, repo: string, workflow: string): TrustResult {
+  if (process.env.NPM_CONFIG_OTP) {
     return "auth_failed";
   }
   if (!process.stdout.isTTY) {
@@ -113,12 +94,12 @@ function handleAuthRetry(
     "\n2FA required. Complete the browser-based authentication when prompted.\n\n",
   );
 
-  const interactiveExitCode = runInteractive(pkg, repo, workflow, otp);
+  const interactiveExitCode = runInteractive(pkg, repo, workflow);
   if (interactiveExitCode === 0) {
     return "configured";
   }
 
-  const retry = runCaptured(pkg, repo, workflow, otp);
+  const retry = runCaptured(pkg, repo, workflow);
   const retryKind = classifyCaptured(retry);
   if (retryKind === "needs_auth") {
     return "auth_failed";
@@ -126,16 +107,11 @@ function handleAuthRetry(
   return retryKind;
 }
 
-function trustPackage(
-  pkg: string,
-  repo: string,
-  workflow: string,
-  otp: string | undefined,
-): TrustResult {
-  const captured = runCaptured(pkg, repo, workflow, otp);
+function trustPackage(pkg: string, repo: string, workflow: string): TrustResult {
+  const captured = runCaptured(pkg, repo, workflow);
   const kind = classifyCaptured(captured);
   if (kind === "needs_auth") {
-    return handleAuthRetry(pkg, repo, workflow, otp);
+    return handleAuthRetry(pkg, repo, workflow);
   }
   return kind;
 }
@@ -157,7 +133,7 @@ function formatResult(pkg: string, result: TrustResult): string {
 }
 
 export function configureTrust(options: ConfigureTrustOptions): TrustSummary {
-  const { packages, repo, workflow, dryRun = false, otp, logger = CONSOLE_LOGGER } = options;
+  const { packages, repo, workflow, dryRun = false, logger = CONSOLE_LOGGER } = options;
 
   logger.log(`Configuring OIDC trusted publishing for ${packages.length} packages`);
   logger.log(`Repo: ${repo} | Workflow: ${workflow}`);
@@ -177,7 +153,7 @@ export function configureTrust(options: ConfigureTrustOptions): TrustSummary {
       continue;
     }
 
-    const result = trustPackage(pkg, repo, workflow, otp);
+    const result = trustPackage(pkg, repo, workflow);
 
     logger.log(formatResult(pkg, result));
 

@@ -22,7 +22,6 @@ export interface ConfigureTrustOptions {
   readonly repo: string;
   readonly workflow: string;
   readonly dryRun?: boolean;
-  readonly otp?: string;
   readonly logger?: Logger;
 }
 

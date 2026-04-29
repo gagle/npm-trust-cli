@@ -564,15 +564,18 @@ describe("runCli", () => {
       expect(exitCode).toBe(0);
     });
 
-    it("should forward every option to configureTrust", () => {
+    it("should forward every option to configureTrust (without otp in the public payload)", () => {
       expect(configureTrustMock).toHaveBeenCalledWith({
         packages: ["@x/a"],
         repo: "o/r",
         workflow: "w.yml",
         dryRun: false,
-        otp: "123456",
         logger,
       });
+    });
+
+    it("should route the OTP through process.env.NPM_CONFIG_OTP for the spawned npm to inherit", () => {
+      expect(process.env.NPM_CONFIG_OTP).toBe("123456");
     });
   });
 

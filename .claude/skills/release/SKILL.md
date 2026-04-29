@@ -188,17 +188,27 @@ npm view npm-trust-cli version 2>/dev/null || echo "FIRST_PUBLISH"
 - If output is `FIRST_PUBLISH` → use **14a** (classic).
 - Otherwise → use **14b** (provenance from CI).
 
-#### 14a — First publish (classic, from local)
+#### 14a — First publish (classic, from an interactive terminal)
 
 OIDC Trusted Publishing requires the package to **already exist** on the
 registry, and `--provenance` requires an OIDC issuer (i.e. CI). Neither is
 available for the first publish, so it must be a classic publish from the local
-machine:
+machine.
 
-```bash
-npm whoami                          # confirm logged in
-npm publish --access public         # 2FA prompt will fire
-```
+> **`npm publish` must run in an interactive terminal** (not from this skill,
+> not from a non-TTY shell). npm 11+ defaults to **web-based 2FA**: it prints
+> an `https://www.npmjs.com/auth/cli/<authId>` URL that you have to open in a
+> browser to authenticate. The URL is masked when stdout isn't a TTY, and
+> `--otp <code>` is rejected on accounts configured for web-only 2FA — so do
+> not try to pipe an OTP through the agent. **Open your terminal and run:**
+>
+> ```bash
+> npm whoami                    # confirm logged in (run npm login if not)
+> npm publish --access public   # follow the printed URL to complete 2FA
+> ```
+>
+> Once the registry shows the new version (`npm view <pkg> version`), come back
+> and continue the skill from step 15.
 
 After it succeeds, **bootstrap OIDC trust** so future releases can use
 provenance from CI:

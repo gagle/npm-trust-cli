@@ -140,8 +140,14 @@ Runs `npm trust github <pkg> --repo <r> --file <w> --yes` for every package and 
 | `repo`         | `string`                   | (required)         | GitHub `owner/repo`.                                                     |
 | `workflow`     | `string`                   | (required)         | GitHub Actions workflow file (`*.yml` / `*.yaml`).                       |
 | `dryRun`       | `boolean`                  | `false`            | Print what would happen without invoking npm.                            |
-| `otp`          | `string \| undefined`      | `undefined`        | 6-8 digit OTP. When provided, routed via `NPM_CONFIG_OTP` env (not argv) so it never appears in the process list. |
 | `logger`       | `Logger`                   | `console`          | `{ log, error }` — supply a capturing logger to suppress stdout.         |
+
+> **OTP for non-interactive use:** if you need to supply a one-time password
+> programmatically (e.g. when 2FA is required), set `process.env.NPM_CONFIG_OTP`
+> before calling `configureTrust`. The spawned `npm trust` process inherits it.
+> The library does not accept an `otp` option directly because npm's web-based
+> 2FA flow has rendered TOTP codes unreliable; for interactive 2FA, run from a
+> TTY and the CLI will fall back to a browser auth prompt automatically.
 
 **Returns:** `TrustSummary`
 
@@ -159,7 +165,6 @@ const summary = configureTrust({
   packages: ["@myorg/foo", "@myorg/bar"],
   repo: "owner/repo",
   workflow: "release.yml",
-  otp: process.env.NPM_OTP,
 });
 
 if (summary.failed > 0) {

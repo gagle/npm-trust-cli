@@ -201,12 +201,15 @@ export async function runCli(
     validateRepo(options.repo);
     validateWorkflow(options.workflow);
 
+    if (options.otp) {
+      process.env.NPM_CONFIG_OTP = options.otp;
+    }
+
     const summary = configureTrust({
       packages,
       repo: options.repo,
       workflow: options.workflow,
       dryRun: Boolean(options.dryRun),
-      otp: options.otp,
       logger,
     });
 
