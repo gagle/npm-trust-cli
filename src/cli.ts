@@ -217,7 +217,7 @@ export async function runCli(
     });
 
     return summary.failed > 0 ? 1 : 0;
-  } catch (error: unknown) {
+  } catch (error) {
     if (error instanceof CliError) {
       logger.error(error.message);
       return error.exitCode;

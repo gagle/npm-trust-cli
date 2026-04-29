@@ -89,6 +89,8 @@ function handleAuthRetry(pkg: string, repo: string, workflow: string): TrustResu
 
   const retry = runCaptured(pkg, repo, workflow);
   const retryKind = classifyCaptured(retry);
+  // Stops the trustPackage → handleAuthRetry → trustPackage indirect recursion:
+  // if the post-interactive retry still reports auth, give up instead of looping.
   if (retryKind === "needs_auth") {
     return "auth_failed";
   }
