@@ -1,7 +1,32 @@
+import { execSync } from "node:child_process";
+import { dirname, join } from "node:path";
 import { parseArgs } from "node:util";
 import type { CliOptions } from "./interfaces/cli.interface.js";
 import { discoverPackages } from "./discover.js";
 import { configureTrust, listTrust } from "./trust.js";
+
+const MIN_NPM_MAJOR = 11;
+
+function checkNpmVersion(): void {
+  const npmBin = join(dirname(process.execPath), "npm");
+  try {
+    const version = execSync(`"${npmBin}" --version`, {
+      encoding: "utf-8",
+    }).trim();
+    const major = Number(version.split(".")[0]);
+    if (major < MIN_NPM_MAJOR) {
+      console.error(
+        `Error: npm >= ${MIN_NPM_MAJOR} required (found ${version}). The "npm trust" command was added in npm 11.5.1.`,
+      );
+      process.exit(1);
+    }
+  } catch {
+    console.error(
+      "Error: could not determine npm version. Ensure npm >= 11.5.1 is installed.",
+    );
+    process.exit(1);
+  }
+}
 
 function printUsage(): void {
   console.log(`npm-trust-cli — Bulk-configure npm OIDC Trusted Publishing
@@ -72,6 +97,7 @@ async function resolvePackages(options: CliOptions): Promise<Array<string>> {
 }
 
 async function main(): Promise<void> {
+  checkNpmVersion();
   const options = parseCliArgs(process.argv.slice(2));
 
   if (!options.scope && (!options.packages || options.packages.length === 0)) {
