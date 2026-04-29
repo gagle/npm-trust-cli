@@ -340,20 +340,16 @@ describe("CLI e2e", () => {
       });
     });
 
-    it("should exit 0", () => {
-      expect(result.exitCode).toBe(0);
+    it("should exit 1 (rejected by package-name validation)", () => {
+      expect(result.exitCode).toBe(1);
     });
 
-    it("should pass the package name through verbatim", () => {
-      expect(result.fakeNpmCalls[0]).toContain(hostilePackage);
+    it("should not invoke npm at all", () => {
+      expect(result.fakeNpmCalls).toHaveLength(0);
     });
 
-    it("should not show evidence of $() command substitution", () => {
-      expect(result.fakeNpmCalls[0]).not.toContain("@x/aPWNED");
-    });
-
-    it("should not show evidence of backtick command substitution", () => {
-      expect(result.fakeNpmCalls[0]).not.toContain("@x/aHACKED");
+    it("should print the invalid-package-name error", () => {
+      expect(result.stderr).toContain("invalid package name");
     });
   });
 

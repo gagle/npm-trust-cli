@@ -184,7 +184,7 @@ export function listTrust(options: ListTrustOptions): void {
   for (const pkg of packages) {
     const result = spawnSync(resolveNpmBin(), ["trust", "list", pkg], {
       encoding: "utf-8",
-      env: { ...process.env, npm_config_loglevel: "error" },
+      env: buildSpawnEnv(),
       stdio: ["pipe", "pipe", "pipe"],
     });
 

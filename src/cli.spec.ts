@@ -354,6 +354,27 @@ describe("runCli", () => {
     });
   });
 
+  describe("when --packages contains a name with disallowed characters", () => {
+    let logger: CapturingLogger;
+    let exitCode: number;
+
+    beforeEach(async () => {
+      logger = createLogger();
+      exitCode = await runCli(
+        ["--packages", "bad pkg!", "--repo", "o/r", "--workflow", "w.yml"],
+        logger,
+      );
+    });
+
+    it("should exit 1", () => {
+      expect(exitCode).toBe(1);
+    });
+
+    it("should log an invalid-package-name error", () => {
+      expect(logger.errors[0]).toContain("invalid package name");
+    });
+  });
+
   describe("when neither --scope nor --packages is set", () => {
     let logger: CapturingLogger;
     let exitCode: number;

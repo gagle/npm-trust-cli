@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { parseArgs } from "node:util";
 import { discoverPackages } from "./discover.js";
-import type { CliOptions, RuntimeLogger } from "./interfaces/cli.interface.js";
+import type { CliOptions, Logger, RuntimeLogger } from "./interfaces/cli.interface.js";
 import { configureTrust, listTrust } from "./trust.js";
 
 const MIN_NODE_MAJOR = 24;
@@ -11,6 +11,7 @@ const MIN_NPM_VERSION = "11.5.1";
 
 const REPO_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
 const WORKFLOW_PATTERN = /^[A-Za-z0-9._/-]+\.ya?ml$/;
+const PACKAGE_NAME_PATTERN = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/i;
 
 export class CliError extends Error {
   public readonly exitCode: number;
@@ -61,7 +62,7 @@ export function checkNpmVersion(): void {
   }
 }
 
-export function printUsage(logger: { readonly log: (message: string) => void } = console): void {
+export function printUsage(logger: Logger = console): void {
   logger.log(`npm-trust-cli — Bulk-configure npm OIDC Trusted Publishing
 
 Usage:
@@ -142,6 +143,17 @@ function validateWorkflow(workflow: string): void {
   }
 }
 
+function validatePackages(packages: ReadonlyArray<string>): void {
+  for (const pkg of packages) {
+    if (!PACKAGE_NAME_PATTERN.test(pkg)) {
+      throw new CliError(
+        `Error: invalid package name "${pkg}". Names must match npm's published-package format (optionally @scope/name, lowercase, no leading dash).`,
+        1,
+      );
+    }
+  }
+}
+
 export async function runCli(
   argv: ReadonlyArray<string>,
   logger: RuntimeLogger = console,
@@ -159,7 +171,7 @@ export async function runCli(
 
     let packages: ReadonlyArray<string>;
     if (options.packages && options.packages.length > 0) {
-      packages = [...options.packages];
+      packages = options.packages;
     } else if (options.scope) {
       logger.log(`Discovering packages in scope ${options.scope}...`);
       packages = await discoverPackages(options.scope);
@@ -175,6 +187,8 @@ export async function runCli(
       logger.error("No packages found");
       return 1;
     }
+
+    validatePackages(packages);
 
     if (options.list) {
       listTrust({ packages, logger });
