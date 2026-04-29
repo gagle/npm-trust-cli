@@ -4,7 +4,7 @@ import prettier from "eslint-config-prettier";
 
 export default tseslint.config(
   {
-    ignores: ["dist/**", "coverage/**", "node_modules/**", "e2e/fixtures/**"],
+    ignores: ["dist/**", "coverage/**", "node_modules/**", "e2e/fixtures/**", "bin/**"],
   },
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
@@ -12,7 +12,7 @@ export default tseslint.config(
     languageOptions: {
       parserOptions: {
         projectService: {
-          allowDefaultProject: ["eslint.config.js", "bin/*.js"],
+          allowDefaultProject: ["eslint.config.js"],
         },
         tsconfigRootDir: import.meta.dirname,
       },
@@ -44,15 +44,6 @@ export default tseslint.config(
       "@typescript-eslint/no-unsafe-return": "off",
       "@typescript-eslint/explicit-module-boundary-types": "off",
       "@typescript-eslint/explicit-member-accessibility": "off",
-    },
-  },
-  {
-    files: ["bin/**/*.js"],
-    languageOptions: {
-      globals: {
-        process: "readonly",
-        console: "readonly",
-      },
     },
   },
   prettier,
