@@ -1,0 +1,48 @@
+{
+  "name": "npm-trust-cli",
+  "version": "0.0.1",
+  "description": "Bulk-configure npm OIDC Trusted Publishing for all packages in a scope",
+  "type": "module",
+  "bin": {
+    "npm-trust-cli": "./bin/npm-trust-cli.js"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "bin"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run --coverage",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=18.3.0"
+  },
+  "keywords": [
+    "npm",
+    "oidc",
+    "trusted-publishing",
+    "trust",
+    "cli",
+    "bulk"
+  ],
+  "license": "MIT",
+  "author": "Gabriel Llamas",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gagle/npm-trust-cli"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "@vitest/coverage-v8": "^4.0.0",
+    "typescript": "^5.8.0",
+    "vitest": "^4.0.0"
+  }
+}
