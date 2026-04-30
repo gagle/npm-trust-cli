@@ -21,11 +21,71 @@ npm OIDC Trusted Publishing lets GitHub Actions publish packages without secrets
 
 `npm-trust-cli` bulk-configures OIDC Trusted Publishing for every package in your npm scope from a single command. It auto-discovers all published packages in your org, handles npm 2FA authentication once, and configures the rest automatically.
 
-## When to use it
+## Use cases
 
-- **First-time setup** — You just enabled OIDC publishing in your CI workflow and need to register all existing packages.
-- **After publishing a new package** — You published `v0.0.1` of a new package and need to add it to your OIDC trust configuration.
-- **Auditing** — You want to check which packages in your org have OIDC trust configured.
+Pick the section that matches your situation. Each one shows the command to run and what to expect.
+
+### 1. First-time setup for an org
+
+You've published a batch of packages under your npm scope and need to enable OIDC trust for all of them in one go.
+
+```bash
+npx npm-trust-cli --scope @myorg --repo myorg/release-pipeline --workflow release.yml
+```
+
+The CLI auto-discovers every published package in the scope, configures each one, and reports a summary at the end. The first package triggers a browser auth flow; on the npm site, choose "skip 2FA for the next 5 minutes" so the rest finish without further prompts.
+
+### 2. Adding new packages to an existing trusted setup
+
+You already configured OIDC for your org's packages and just published one or more new ones. You want to enable trust only for the new ones — without re-touching the rest.
+
+```bash
+npx npm-trust-cli --packages @myorg/new-pkg --repo myorg/release-pipeline --workflow release.yml
+```
+
+For multiple new packages:
+
+```bash
+npx npm-trust-cli --packages @myorg/new-a @myorg/new-b --repo myorg/release-pipeline --workflow release.yml
+```
+
+> A `--only-new` flag is on the [roadmap](#roadmap) — it will diff against existing trust configurations so you don't have to track which packages are new.
+
+### 3. A single-package project
+
+You maintain a standalone npm package (no monorepo, no scope-wide setup). The package name comes from your repo's `package.json`.
+
+```bash
+npx npm-trust-cli --packages my-package --repo me/my-repo --workflow release.yml
+```
+
+> A `--auto` flag is on the [roadmap](#roadmap) — it will read `./package.json` and pick up the package name automatically.
+
+### 4. A monorepo (pnpm / npm / yarn workspaces, with or without NX)
+
+You maintain a monorepo with multiple publishable packages — for example `packages/foo`, `packages/bar`, `apps/something`. List the publishable package names explicitly:
+
+```bash
+npx npm-trust-cli --packages @myorg/foo @myorg/bar --repo myorg/repo --workflow release.yml
+```
+
+If every package shares the same scope, `--scope` is shorter. If scopes differ (or some are unscoped), stick with `--packages`.
+
+> A `--auto` flag is on the [roadmap](#roadmap) — it will detect `pnpm-workspace.yaml` or `package.json#workspaces`, expand the globs, and skip packages marked `private: true`.
+
+### 5. Auditing — checking what's already trusted
+
+To inspect current trust status without making changes:
+
+```bash
+npx npm-trust-cli --scope @myorg --list
+```
+
+To preview what `configure` would do:
+
+```bash
+npx npm-trust-cli --scope @myorg --repo myorg/repo --workflow release.yml --dry-run
+```
 
 ## What happens during execution
 
@@ -41,32 +101,6 @@ npm OIDC Trusted Publishing lets GitHub Actions publish packages without secrets
 - npm >= 11.5.1 (for `npm trust` support)
 - 2FA enabled on your npm account
 - Write access to the packages you're configuring
-
-## Usage
-
-### Configure all packages in a scope
-
-```bash
-npx npm-trust-cli --scope @myorg --repo owner/repo --workflow release.yml
-```
-
-### Configure specific packages
-
-```bash
-npx npm-trust-cli --packages @myorg/foo @myorg/bar --repo owner/repo --workflow release.yml
-```
-
-### Check current trust status
-
-```bash
-npx npm-trust-cli --scope @myorg --list
-```
-
-### Preview without making changes
-
-```bash
-npx npm-trust-cli --scope @myorg --repo owner/repo --workflow release.yml --dry-run
-```
 
 ## Options
 
@@ -86,7 +120,7 @@ npx npm-trust-cli --scope @myorg --repo owner/repo --workflow release.yml --dry-
 Discovering packages in scope @myorg...
 Found 12 packages
 
-Configuring OIDC trusted publishing for 12 packages
+Configuring OIDC trusted publishing for 12 packages in @myorg
 Repo: owner/repo | Workflow: release.yml
 
 @myorg/core                    ✓ configured
@@ -99,6 +133,14 @@ Done: 2 configured, 9 already set, 1 failed
 Failed packages (publish first, then re-run):
   - @myorg/new-pkg
 ```
+
+## Roadmap
+
+Upcoming releases will smooth out the manual steps shown in the use cases above:
+
+- **`--auto`** — detect packages automatically from `pnpm-workspace.yaml`, `package.json#workspaces`, or a single root `package.json`. Removes the need to list packages by hand for monorepos and single-package projects.
+- **`--only-new`** — filter to packages that don't yet have OIDC trust configured. Removes the need to track which packages are "new" after incremental publishes.
+- **Guided wizard (Claude Code skill)** — a skill at `~/projects/ncbijs/.claude/skills/setup-npm-trust/` (separate plan) will orchestrate the full flow: detect → diff → prompt for `npm login` if interactive auth is required → configure → verify.
 
 ## Programmatic usage
 

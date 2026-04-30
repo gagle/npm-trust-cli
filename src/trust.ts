@@ -106,6 +106,32 @@ function trustPackage(pkg: string, repo: string, workflow: string): TrustResult 
   return kind;
 }
 
+function inferCommonScope(packages: ReadonlyArray<string>): string | null {
+  if (packages.length === 0) {
+    return null;
+  }
+
+  let commonScope: string | null = null;
+
+  for (const pkg of packages) {
+    if (!pkg.startsWith("@")) {
+      return null;
+    }
+    const slashIndex = pkg.indexOf("/");
+    if (slashIndex === -1) {
+      return null;
+    }
+    const scope = pkg.slice(0, slashIndex);
+    if (commonScope === null) {
+      commonScope = scope;
+    } else if (commonScope !== scope) {
+      return null;
+    }
+  }
+
+  return commonScope;
+}
+
 function formatResult(pkg: string, result: TrustResult): string {
   const label = pkg.padEnd(30);
   switch (result) {
@@ -125,7 +151,9 @@ function formatResult(pkg: string, result: TrustResult): string {
 export function configureTrust(options: ConfigureTrustOptions): TrustSummary {
   const { packages, repo, workflow, dryRun = false, logger = CONSOLE_LOGGER } = options;
 
-  logger.log(`Configuring OIDC trusted publishing for ${packages.length} packages`);
+  const commonScope = inferCommonScope(packages);
+  const scopeSuffix = commonScope === null ? "" : ` in ${commonScope}`;
+  logger.log(`Configuring OIDC trusted publishing for ${packages.length} packages${scopeSuffix}`);
   logger.log(`Repo: ${repo} | Workflow: ${workflow}`);
   if (dryRun) {
     logger.log("(dry run — no changes will be made)");
@@ -180,7 +208,9 @@ export function configureTrust(options: ConfigureTrustOptions): TrustSummary {
 export function listTrust(options: ListTrustOptions): void {
   const { packages, logger = CONSOLE_LOGGER } = options;
 
-  logger.log(`Checking trust status for ${packages.length} packages`);
+  const commonScope = inferCommonScope(packages);
+  const scopeSuffix = commonScope === null ? "" : ` in ${commonScope}`;
+  logger.log(`Checking trust status for ${packages.length} packages${scopeSuffix}`);
   logger.log("");
 
   for (const pkg of packages) {

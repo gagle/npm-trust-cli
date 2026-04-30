@@ -397,6 +397,101 @@ describe("configureTrust", () => {
       expect(consoleSpy).toHaveBeenCalled();
     });
   });
+
+  describe("when all packages share the same scope", () => {
+    let logger: CapturingLogger;
+
+    beforeEach(() => {
+      logger = createLogger();
+      configureTrust({
+        packages: ["@myorg/a", "@myorg/b"],
+        repo: "o/r",
+        workflow: "w.yml",
+        dryRun: true,
+        logger,
+      });
+    });
+
+    it("should append the inferred scope to the header", () => {
+      expect(logger.lines[0]).toBe("Configuring OIDC trusted publishing for 2 packages in @myorg");
+    });
+  });
+
+  describe("when packages come from different scopes", () => {
+    let logger: CapturingLogger;
+
+    beforeEach(() => {
+      logger = createLogger();
+      configureTrust({
+        packages: ["@one/a", "@two/b"],
+        repo: "o/r",
+        workflow: "w.yml",
+        dryRun: true,
+        logger,
+      });
+    });
+
+    it("should omit the scope suffix from the header", () => {
+      expect(logger.lines[0]).toBe("Configuring OIDC trusted publishing for 2 packages");
+    });
+  });
+
+  describe("when packages are unscoped", () => {
+    let logger: CapturingLogger;
+
+    beforeEach(() => {
+      logger = createLogger();
+      configureTrust({
+        packages: ["plain-pkg"],
+        repo: "o/r",
+        workflow: "w.yml",
+        dryRun: true,
+        logger,
+      });
+    });
+
+    it("should omit the scope suffix from the header", () => {
+      expect(logger.lines[0]).toBe("Configuring OIDC trusted publishing for 1 packages");
+    });
+  });
+
+  describe("when a package name is just a scope marker without a slash", () => {
+    let logger: CapturingLogger;
+
+    beforeEach(() => {
+      logger = createLogger();
+      configureTrust({
+        packages: ["@onlyScope"],
+        repo: "o/r",
+        workflow: "w.yml",
+        dryRun: true,
+        logger,
+      });
+    });
+
+    it("should omit the scope suffix from the header", () => {
+      expect(logger.lines[0]).toBe("Configuring OIDC trusted publishing for 1 packages");
+    });
+  });
+
+  describe("when the packages list is empty", () => {
+    let logger: CapturingLogger;
+
+    beforeEach(() => {
+      logger = createLogger();
+      configureTrust({
+        packages: [],
+        repo: "o/r",
+        workflow: "w.yml",
+        dryRun: true,
+        logger,
+      });
+    });
+
+    it("should omit the scope suffix from the header", () => {
+      expect(logger.lines[0]).toBe("Configuring OIDC trusted publishing for 0 packages");
+    });
+  });
 });
 
 describe("listTrust", () => {
@@ -468,6 +563,38 @@ describe("listTrust", () => {
         ["trust", "list", "@x/a$(echo PWNED)"],
         expect.anything(),
       );
+    });
+  });
+
+  describe("when all packages share the same scope", () => {
+    let logger: CapturingLogger;
+
+    beforeEach(() => {
+      spawnSyncMock
+        .mockReturnValueOnce({ stdout: "", status: 0 })
+        .mockReturnValueOnce({ stdout: "", status: 0 });
+      logger = createLogger();
+      listTrust({ packages: ["@myorg/a", "@myorg/b"], logger });
+    });
+
+    it("should append the inferred scope to the header", () => {
+      expect(logger.lines[0]).toBe("Checking trust status for 2 packages in @myorg");
+    });
+  });
+
+  describe("when packages come from different scopes", () => {
+    let logger: CapturingLogger;
+
+    beforeEach(() => {
+      spawnSyncMock
+        .mockReturnValueOnce({ stdout: "", status: 0 })
+        .mockReturnValueOnce({ stdout: "", status: 0 });
+      logger = createLogger();
+      listTrust({ packages: ["@one/a", "@two/b"], logger });
+    });
+
+    it("should omit the scope suffix from the header", () => {
+      expect(logger.lines[0]).toBe("Checking trust status for 2 packages");
     });
   });
 });
