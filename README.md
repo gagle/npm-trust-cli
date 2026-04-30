@@ -13,6 +13,14 @@
 
 ---
 
+> **Built for LLM consumption.** Every entry point is shaped for an agent to drive end to end:
+>
+> - A bundled **Claude Code skill** (`npx npm-trust-cli --init-skill`) that walks an agent through detect → diff → manual auth pauses → configure → verify, with no per-project setup.
+> - **Filesystem auto-detection** (`--auto`) that removes the "what packages live here?" guesswork — works for pnpm/npm/yarn workspaces and single-package repos, picks up scope from package names automatically.
+> - **`--only-new`** for incremental setup so the agent doesn't waste calls re-checking packages that are already trust-configured.
+> - A **typed programmatic API** alongside the CLI (`discoverFromCwd`, `checkPackageStatuses`, `findUnconfiguredPackages`, `configureTrust`, …) so an agent can choose between spawning the binary or importing the library — same primitives, same data shapes.
+> - **Deterministic output**: every package status comes back as one of `configured | already | not_published | auth_failed | error`, so an agent can branch on the result without parsing prose.
+
 ## The problem
 
 npm OIDC Trusted Publishing lets GitHub Actions publish packages without secrets or expiring tokens. But it requires **per-package configuration** on npmjs.com. If you maintain an npm org with 10, 50, or 100+ packages, setting up each one manually through the web UI is tedious and error-prone.
