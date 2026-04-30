@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.5.0](https://github.com/gagle/npm-trust-cli/compare/v0.4.0...v0.5.0) (2026-04-30)
+
+### Features
+
+- bundled `setup-npm-trust` skill: convert four interactive text prompts to `AskUserQuestion` tool calls (source-flag fallback when `--auto` can't detect the workspace, GitHub repo confirmation, workflow disambiguation, and the Phase 2 proceed gate). Free-text "yes/no?" prompts were too easy to miss against surrounding agent output — the structured selector renders as a clearly-labeled chip and is unmissable. Add a "Recommended conventions" section documenting the `AskUserQuestion`-only rule and the preferred `npm-trust:setup` npm-script naming (namespace before verb) over the older `setup:npm-trust` ordering ([651736f](https://github.com/gagle/npm-trust-cli/commit/651736f))
+
 ## [0.4.0](https://github.com/gagle/npm-trust-cli/compare/v0.3.0...v0.4.0) (2026-04-30)
 
 ### Features
