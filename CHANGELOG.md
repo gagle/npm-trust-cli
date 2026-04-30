@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.0](https://github.com/gagle/npm-trust-cli/compare/v0.1.0...v0.2.0) (2026-04-30)
+
+### Features
+
+- infer common scope from package names and rewrite README around five concrete use cases (first-time org setup, incremental new packages, single package, monorepo, audit) ([ac4a8ba](https://github.com/gagle/npm-trust-cli/commit/ac4a8ba))
+- add `--auto` flag with filesystem detection: `pnpm-workspace.yaml` → `package.json#workspaces` → single root `package.json`. Hand-rolled YAML reader keeps zero runtime dependencies. New exports `discoverFromCwd`, `parsePnpmWorkspacePackages`, and `DiscoveredWorkspace` / `WorkspaceSource` types ([53603fb](https://github.com/gagle/npm-trust-cli/commit/53603fb))
+- add `--only-new` filter for incremental setup. New `src/diff.ts` module exposes `checkPackageStatuses` (rich per-package status: `trustConfigured`, `published`) and `findUnconfiguredPackages` (CLI-side filter). Both calls run `npm trust list` and `npm view` per package ([f9fcfdf](https://github.com/gagle/npm-trust-cli/commit/f9fcfdf))
+- bundle the `setup-npm-trust` Claude Code skill at `skills/setup-npm-trust/SKILL.md` and add the `--init-skill` flag, which scaffolds the skill into the consumer's `./.claude/skills/`. `runCli` reorders so `--help` and `--init-skill` short-circuit before the Node/npm version checks. README adds a "Use from a Claude Code agent" section. The `skills/` folder is included in the npm tarball via `package.json#files` ([abe98d5](https://github.com/gagle/npm-trust-cli/commit/abe98d5))
+
+### Refactor
+
+- harden `--auto` and `--only-new` against round-1 review feedback: pnpm-workspace negation patterns are honored as literal-path exclusions, the YAML reader handles inline-flow form (`packages: [a, b]`), `expandWorkspaceGlobs` consolidates dedup into a single ordered `Set`, and `findUnconfiguredPackages` collapses to `filter().map()` ([30013f6](https://github.com/gagle/npm-trust-cli/commit/30013f6))
+- rework `--init-skill` around `copyFile(..., COPYFILE_EXCL)` for atomic existence checking. Eliminates the TOCTOU window in the previous `access()` precheck and surfaces real errnos (EACCES/EPERM/EROFS) instead of silently treating them as "target already exists". Adds `isFsErrorWithCode` helper; tests cover EEXIST, ENOENT, the unexpected-errno rethrow, and the non-Error rejection branch ([360ce2e](https://github.com/gagle/npm-trust-cli/commit/360ce2e))
+
 ## [0.1.0](https://github.com/gagle/npm-trust-cli/compare/v0.0.0...v0.1.0) (2026-04-29)
 
 ### Breaking Changes
