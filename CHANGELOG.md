@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.0](https://github.com/gagle/npm-trust-cli/compare/v0.3.0...v0.4.0) (2026-04-30)
+
+### Features
+
+- add `--doctor` flag emitting a structured DoctorReport (cli, runtime, auth, workspace, repo, workflows, packages, issues, summary). `--json` produces machine-parseable output for agents and CI gates. Exit code is 0 when no `fail`-severity issues exist, 1 otherwise. Stable issue codes (NODE_TOO_OLD, AUTH_NOT_LOGGED_IN, WORKSPACE_*, REPO_*, WORKFLOWS_*, PACKAGE_*, REGISTRY_UNREACHABLE, DOCTOR_FLAG_IGNORED) let agents branch on the report without parsing prose. PACKAGE_TRUST_DISCREPANCY surfaces the npm trust list / SLSA provenance gap explicitly. `--doctor` short-circuits before the Node/npm version checks so the CLI can still produce a useful report on under-provisioned environments ([b7d525c](https://github.com/gagle/npm-trust-cli/commit/b7d525c))
+- add `checkPackageStatusesAsync` export with bounded concurrency (8 by default). Collapses `npm view name` + `npm view dist.attestations.url` into a single `npm view <pkg> dist --json` call, halving the per-package spawn count. Pushes 50-package monorepos from minutes to seconds. The sync `checkPackageStatuses` keeps the same shape for backward compatibility ([b7d525c](https://github.com/gagle/npm-trust-cli/commit/b7d525c))
+- bundled `setup-npm-trust` skill now opens Phase 1 with `<CLI> --doctor --json` when the resolved CLI supports it; falls back to the multi-step probe for v0.2.0/v0.3.0 CLIs. The agent gets all of Phase 1's info in a single call + JSON parse, and consumers branch on stable issue codes ([b7d525c](https://github.com/gagle/npm-trust-cli/commit/b7d525c))
+
 ## [0.3.0](https://github.com/gagle/npm-trust-cli/compare/v0.2.0...v0.3.0) (2026-04-30)
 
 ### Features
