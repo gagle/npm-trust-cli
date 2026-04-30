@@ -555,6 +555,42 @@ describe("runCli", () => {
     });
   });
 
+  describe("when --auto, --scope, and --packages are all passed", () => {
+    beforeEach(async () => {
+      configureTrustMock.mockReturnValueOnce({
+        configured: 1,
+        already: 0,
+        failed: 0,
+        failedPackages: [],
+      });
+      await runCli(
+        [
+          "--auto",
+          "--scope",
+          "@s",
+          "--packages",
+          "@x/explicit",
+          "--repo",
+          "o/r",
+          "--workflow",
+          "w.yml",
+        ],
+        createLogger(),
+      );
+    });
+
+    it("should pick --packages and skip both other sources", () => {
+      expect(discoverFromCwdMock).not.toHaveBeenCalled();
+      expect(discoverPackagesMock).not.toHaveBeenCalled();
+    });
+
+    it("should forward only the explicit packages to configureTrust", () => {
+      expect(configureTrustMock).toHaveBeenCalledWith(
+        expect.objectContaining({ packages: ["@x/explicit"] }),
+      );
+    });
+  });
+
   describe("when discovery returns zero packages", () => {
     let logger: CapturingLogger;
     let exitCode: number;

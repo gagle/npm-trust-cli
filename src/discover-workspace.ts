@@ -2,6 +2,8 @@ import { glob, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { DiscoveredWorkspace } from "./interfaces/cli.interface.js";
 
+const PACKAGES_KEY = "packages:";
+
 interface RootPackageJson {
   readonly name?: string;
   readonly private?: boolean;
@@ -49,9 +51,15 @@ export function parsePnpmWorkspacePackages(content: string): Array<string> {
     const trimmed = line.trim();
 
     if (!inPackagesBlock) {
-      if (trimmed === "packages:") {
-        inPackagesBlock = true;
+      if (!trimmed.startsWith(PACKAGES_KEY)) {
+        continue;
       }
+      const inline = trimmed.slice(PACKAGES_KEY.length).trim();
+      if (inline.startsWith("[")) {
+        result.push(...parseInlineArray(inline));
+        return result;
+      }
+      inPackagesBlock = true;
       continue;
     }
 
@@ -76,11 +84,27 @@ export function parsePnpmWorkspacePackages(content: string): Array<string> {
     }
 
     const value = stripQuotes(captured.trim());
-    if (value !== "") {
+    if (value.trim() !== "") {
       result.push(value);
     }
   }
 
+  return result;
+}
+
+function parseInlineArray(text: string): Array<string> {
+  const closeIdx = text.indexOf("]");
+  if (closeIdx === -1) {
+    return [];
+  }
+  const inner = text.slice(1, closeIdx);
+  const result: Array<string> = [];
+  for (const part of inner.split(",")) {
+    const value = stripQuotes(part.trim());
+    if (value.trim() !== "") {
+      result.push(value);
+    }
+  }
   return result;
 }
 
@@ -127,29 +151,31 @@ async function expandWorkspaceGlobs(
   cwd: string,
   patterns: ReadonlyArray<string>,
 ): Promise<ReadonlyArray<string>> {
-  const seen = new Set<string>();
-  const collected: Array<string> = [];
-
+  const positivePatterns: Array<string> = [];
+  const excludedPaths = new Set<string>();
   for (const pattern of patterns) {
-    if (pattern.startsWith("!") || pattern.trim() === "") {
+    if (pattern.startsWith("!")) {
+      excludedPaths.add(pattern.slice(1));
       continue;
     }
+    positivePatterns.push(pattern);
+  }
+
+  const collected = new Set<string>();
+  for (const pattern of positivePatterns) {
     for await (const relPath of glob(pattern, { cwd })) {
+      if (excludedPaths.has(relPath)) {
+        continue;
+      }
       const pkg = await readPackageJsonName(join(cwd, relPath));
-      if (pkg === null) {
+      if (pkg === null || pkg.private === true) {
         continue;
       }
-      if (pkg.private === true) {
-        continue;
-      }
-      if (!seen.has(pkg.name)) {
-        seen.add(pkg.name);
-        collected.push(pkg.name);
-      }
+      collected.add(pkg.name);
     }
   }
 
-  return collected.sort();
+  return Array.from(collected).sort();
 }
 
 async function readPackageJsonName(dir: string): Promise<DiscoveredPackageJson | null> {
@@ -182,7 +208,17 @@ async function readTextFile(path: string): Promise<string | null> {
 }
 
 function filterStrings(values: ReadonlyArray<unknown>): Array<string> {
-  return values.filter((value): value is string => typeof value === "string");
+  const result: Array<string> = [];
+  for (const value of values) {
+    if (typeof value !== "string") {
+      continue;
+    }
+    if (value.trim() === "") {
+      continue;
+    }
+    result.push(value);
+  }
+  return result;
 }
 
 function stripComment(line: string): string {

@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { discoverFromCwd, parsePnpmWorkspacePackages } from "./discover-workspace.js";
 
@@ -11,8 +11,7 @@ interface PackageFiles {
 function writeFiles(root: string, files: PackageFiles): void {
   for (const [relativePath, content] of Object.entries(files)) {
     const fullPath = join(root, relativePath);
-    const parent = fullPath.split("/").slice(0, -1).join("/");
-    mkdirSync(parent, { recursive: true });
+    mkdirSync(dirname(fullPath), { recursive: true });
     writeFileSync(fullPath, content);
   }
 }
@@ -137,6 +136,33 @@ describe("parsePnpmWorkspacePackages", () => {
       expect(parsePnpmWorkspacePackages("packages:\n  - x\n")).toStrictEqual(["x"]);
     });
   });
+
+  describe("when packages uses YAML flow form on a single line", () => {
+    it("should parse single-quoted entries", () => {
+      expect(parsePnpmWorkspacePackages("packages: ['packages/*', 'apps/*']\n")).toStrictEqual([
+        "packages/*",
+        "apps/*",
+      ]);
+    });
+
+    it("should parse double-quoted entries", () => {
+      expect(parsePnpmWorkspacePackages('packages: ["a", "b"]\n')).toStrictEqual(["a", "b"]);
+    });
+
+    it("should parse unquoted entries", () => {
+      expect(parsePnpmWorkspacePackages("packages: [a, b]\n")).toStrictEqual(["a", "b"]);
+    });
+
+    it("should drop empty entries from the flow array", () => {
+      expect(parsePnpmWorkspacePackages("packages: ['a', '', 'b']\n")).toStrictEqual(["a", "b"]);
+    });
+  });
+
+  describe("when packages uses an unterminated flow form", () => {
+    it("should return an empty list rather than parsing partially", () => {
+      expect(parsePnpmWorkspacePackages("packages: ['a', 'b'\n")).toStrictEqual([]);
+    });
+  });
 });
 
 describe("discoverFromCwd", () => {
@@ -179,7 +205,7 @@ describe("discoverFromCwd", () => {
     });
   });
 
-  describe("when pnpm-workspace.yaml contains a negation pattern", () => {
+  describe("when pnpm-workspace.yaml contains a literal negation path", () => {
     let result: Awaited<ReturnType<typeof discoverFromCwd>>;
 
     beforeEach(async () => {
@@ -191,8 +217,8 @@ describe("discoverFromCwd", () => {
       result = await discoverFromCwd(tmpDir);
     });
 
-    it("should ignore the negation entry rather than excluding matches", () => {
-      expect(result?.packages).toStrictEqual(["@org/excluded", "@org/keeper"]);
+    it("should drop the negated path from the result", () => {
+      expect(result?.packages).toStrictEqual(["@org/keeper"]);
     });
   });
 
@@ -386,14 +412,14 @@ describe("discoverFromCwd", () => {
         "package.json": JSON.stringify({
           name: "root",
           private: true,
-          workspaces: ["packages/*", 42, null],
+          workspaces: ["packages/*", 42, null, "", "   "],
         }),
         "packages/alpha/package.json": pkgJson("@org/alpha"),
       });
       result = await discoverFromCwd(tmpDir);
     });
 
-    it("should keep only the string entries", () => {
+    it("should drop non-string and blank entries", () => {
       expect(result?.packages).toStrictEqual(["@org/alpha"]);
     });
   });

@@ -42,13 +42,7 @@ export function checkPackageStatuses(
 }
 
 export function findUnconfiguredPackages(packages: ReadonlyArray<string>): ReadonlyArray<string> {
-  const statuses = checkPackageStatuses(packages);
-  const unconfigured: Array<string> = [];
-  for (const status of statuses) {
-    if (status.trustConfigured && status.published) {
-      continue;
-    }
-    unconfigured.push(status.pkg);
-  }
-  return unconfigured;
+  return checkPackageStatuses(packages)
+    .filter((status) => !(status.trustConfigured && status.published))
+    .map((status) => status.pkg);
 }

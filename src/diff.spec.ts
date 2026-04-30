@@ -193,6 +193,21 @@ describe("findUnconfiguredPackages", () => {
     });
   });
 
+  describe("when a single package is trust-configured but not yet published", () => {
+    let result: ReadonlyArray<string>;
+
+    beforeEach(() => {
+      spawnSyncMock
+        .mockReturnValueOnce(trustListResponse("github:o/r release.yml"))
+        .mockReturnValueOnce(viewResponse(1));
+      result = findUnconfiguredPackages(["@x/configured-but-unpublished"]);
+    });
+
+    it("should keep the package", () => {
+      expect(result).toStrictEqual(["@x/configured-but-unpublished"]);
+    });
+  });
+
   describe("when both signals are missing", () => {
     let result: ReadonlyArray<string>;
 
