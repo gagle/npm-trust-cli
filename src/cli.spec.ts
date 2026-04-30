@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const spawnSyncMock = vi.fn();
 const discoverPackagesMock = vi.fn();
 const discoverFromCwdMock = vi.fn();
+const findUnconfiguredPackagesMock = vi.fn();
 const configureTrustMock = vi.fn();
 const listTrustMock = vi.fn();
 
@@ -16,6 +17,11 @@ vi.mock("./discover.js", () => ({
 
 vi.mock("./discover-workspace.js", () => ({
   discoverFromCwd: (...args: ReadonlyArray<unknown>) => discoverFromCwdMock(...args),
+}));
+
+vi.mock("./diff.js", () => ({
+  findUnconfiguredPackages: (...args: ReadonlyArray<unknown>) =>
+    findUnconfiguredPackagesMock(...args),
 }));
 
 vi.mock("./trust.js", () => ({
@@ -826,6 +832,90 @@ describe("runCli", () => {
 
     it("should coerce the value into the error log message", () => {
       expect(logger.errors[0]).toBe("Error: plain string failure");
+    });
+  });
+
+  describe("when --only-new filters out every package", () => {
+    let logger: CapturingLogger;
+    let exitCode: number;
+
+    beforeEach(async () => {
+      findUnconfiguredPackagesMock.mockReturnValueOnce([]);
+      logger = createLogger();
+      exitCode = await runCli(
+        ["--packages", "@x/a", "--repo", "o/r", "--workflow", "w.yml", "--only-new"],
+        logger,
+      );
+    });
+
+    it("should exit 0", () => {
+      expect(exitCode).toBe(0);
+    });
+
+    it("should log a message stating everything is already configured", () => {
+      expect(
+        logger.logs.some((line) => line.includes("All packages already have OIDC trust")),
+      ).toBe(true);
+    });
+
+    it("should not invoke configureTrust", () => {
+      expect(configureTrustMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("when --only-new keeps a subset of packages", () => {
+    let logger: CapturingLogger;
+
+    beforeEach(async () => {
+      findUnconfiguredPackagesMock.mockReturnValueOnce(["@x/new"]);
+      configureTrustMock.mockReturnValueOnce({
+        configured: 1,
+        already: 0,
+        failed: 0,
+        failedPackages: [],
+      });
+      logger = createLogger();
+      await runCli(
+        [
+          "--packages",
+          "@x/old",
+          "--packages",
+          "@x/new",
+          "--repo",
+          "o/r",
+          "--workflow",
+          "w.yml",
+          "--only-new",
+        ],
+        logger,
+      );
+    });
+
+    it("should forward only the filtered packages to configureTrust", () => {
+      expect(configureTrustMock).toHaveBeenCalledWith(
+        expect.objectContaining({ packages: ["@x/new"] }),
+      );
+    });
+
+    it("should report the filter ratio in the output", () => {
+      expect(logger.logs.some((line) => line.includes("2 → 1 packages"))).toBe(true);
+    });
+  });
+
+  describe("when --only-new is combined with --list", () => {
+    let logger: CapturingLogger;
+
+    beforeEach(async () => {
+      findUnconfiguredPackagesMock.mockReturnValueOnce(["@x/new"]);
+      logger = createLogger();
+      await runCli(
+        ["--packages", "@x/old", "--packages", "@x/new", "--list", "--only-new"],
+        logger,
+      );
+    });
+
+    it("should call listTrust with the filtered list only", () => {
+      expect(listTrustMock).toHaveBeenCalledWith(expect.objectContaining({ packages: ["@x/new"] }));
     });
   });
 });

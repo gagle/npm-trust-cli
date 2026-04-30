@@ -37,41 +37,41 @@ The CLI auto-discovers every published package in the scope, configures each one
 
 ### 2. Adding new packages to an existing trusted setup
 
-You already configured OIDC for your org's packages and just published one or more new ones. You want to enable trust only for the new ones — without re-touching the rest.
+You already configured OIDC for your org's packages and just published one or more new ones. Combine `--scope` with `--only-new` to filter automatically — the CLI runs `npm trust list` and `npm view` per package and configures only the ones missing trust or not yet published.
 
 ```bash
-npx npm-trust-cli --packages @myorg/new-pkg --repo myorg/release-pipeline --workflow release.yml
+npx npm-trust-cli --scope @myorg --repo myorg/release-pipeline --workflow release.yml --only-new
 ```
 
-For multiple new packages:
-
-```bash
-npx npm-trust-cli --packages @myorg/new-a @myorg/new-b --repo myorg/release-pipeline --workflow release.yml
-```
-
-> A `--only-new` flag is on the [roadmap](#roadmap) — it will diff against existing trust configurations so you don't have to track which packages are new.
+`--only-new` works with any source (`--scope`, `--packages`, or `--auto`).
 
 ### 3. A single-package project
 
-You maintain a standalone npm package (no monorepo, no scope-wide setup). The package name comes from your repo's `package.json`.
+You maintain a standalone npm package (no monorepo, no scope-wide setup). Run from the repo root and let `--auto` read `./package.json`:
+
+```bash
+cd ~/projects/my-package
+npx npm-trust-cli --auto --repo me/my-repo --workflow release.yml
+```
+
+If you'd rather be explicit:
 
 ```bash
 npx npm-trust-cli --packages my-package --repo me/my-repo --workflow release.yml
 ```
 
-> A `--auto` flag is on the [roadmap](#roadmap) — it will read `./package.json` and pick up the package name automatically.
-
 ### 4. A monorepo (pnpm / npm / yarn workspaces, with or without NX)
 
-You maintain a monorepo with multiple publishable packages — for example `packages/foo`, `packages/bar`, `apps/something`. List the publishable package names explicitly:
+You maintain a monorepo with multiple publishable packages — for example `packages/foo`, `packages/bar`, `apps/something`. Run from the repo root with `--auto`:
 
 ```bash
-npx npm-trust-cli --packages @myorg/foo @myorg/bar --repo myorg/repo --workflow release.yml
+cd ~/projects/my-monorepo
+npx npm-trust-cli --auto --repo myorg/repo --workflow release.yml
 ```
 
-If every package shares the same scope, `--scope` is shorter. If scopes differ (or some are unscoped), stick with `--packages`.
+Detection priority: `pnpm-workspace.yaml` → `package.json#workspaces` → single `./package.json`. Packages marked `private: true` are skipped.
 
-> A `--auto` flag is on the [roadmap](#roadmap) — it will detect `pnpm-workspace.yaml` or `package.json#workspaces`, expand the globs, and skip packages marked `private: true`.
+If every published package shares the same scope, `--scope @myorg` is also a one-liner. For ad-hoc lists, `--packages` still works.
 
 ### 5. Auditing — checking what's already trusted
 
@@ -104,15 +104,17 @@ npx npm-trust-cli --scope @myorg --repo myorg/repo --workflow release.yml --dry-
 
 ## Options
 
-| Flag                  | Description                                                           |
-| --------------------- | --------------------------------------------------------------------- |
-| `--scope <scope>`     | npm org scope (e.g. `@myorg`) — auto-discovers all published packages |
-| `--packages <pkg...>` | explicit package names (alternative to `--scope`)                     |
-| `--repo <owner/repo>` | GitHub repository                                                     |
-| `--workflow <file>`   | GitHub Actions workflow filename (e.g. `release.yml`)                 |
-| `--list`              | list current trust status instead of configuring                      |
-| `--dry-run`           | show what would be done without making changes                        |
-| `--help`              | show help message                                                     |
+| Flag                  | Description                                                                                |
+| --------------------- | ------------------------------------------------------------------------------------------ |
+| `--scope <scope>`     | npm org scope (e.g. `@myorg`) — auto-discovers all published packages                      |
+| `--packages <pkg...>` | explicit package names (alternative to `--scope`)                                          |
+| `--auto`              | detect packages from the current directory (workspaces or single `package.json`)           |
+| `--repo <owner/repo>` | GitHub repository                                                                          |
+| `--workflow <file>`   | GitHub Actions workflow filename (e.g. `release.yml`)                                      |
+| `--list`              | list current trust status instead of configuring                                           |
+| `--only-new`          | filter the resolved package list to those without OIDC trust yet, or not yet published     |
+| `--dry-run`           | show what would be done without making changes                                             |
+| `--help`              | show help message                                                                          |
 
 ## Example output
 
@@ -136,10 +138,6 @@ Failed packages (publish first, then re-run):
 
 ## Roadmap
 
-Upcoming releases will smooth out the manual steps shown in the use cases above:
-
-- **`--auto`** — detect packages automatically from `pnpm-workspace.yaml`, `package.json#workspaces`, or a single root `package.json`. Removes the need to list packages by hand for monorepos and single-package projects.
-- **`--only-new`** — filter to packages that don't yet have OIDC trust configured. Removes the need to track which packages are "new" after incremental publishes.
 - **Guided wizard (Claude Code skill)** — a skill at `~/projects/ncbijs/.claude/skills/setup-npm-trust/` (separate plan) will orchestrate the full flow: detect → diff → prompt for `npm login` if interactive auth is required → configure → verify.
 
 ## Programmatic usage
@@ -148,8 +146,11 @@ Upcoming releases will smooth out the manual steps shown in the use cases above:
 
 ```ts
 import {
+  checkPackageStatuses,
   configureTrust,
+  discoverFromCwd,
   discoverPackages,
+  findUnconfiguredPackages,
   listTrust,
   runCli,
 } from "npm-trust-cli";
@@ -169,6 +170,51 @@ Discovers all published packages in an npm scope by paginating the public regist
 
 ```ts
 const packages = await discoverPackages("@myorg");
+```
+
+### `discoverFromCwd(cwd)`
+
+Detects packages from a directory's filesystem layout: `pnpm-workspace.yaml` → `package.json#workspaces` → single `./package.json`. Packages marked `private: true` are skipped.
+
+| Parameter | Type     | Description                                              |
+| --------- | -------- | -------------------------------------------------------- |
+| `cwd`     | `string` | Absolute path to the directory to inspect (often `process.cwd()`). |
+
+**Returns:** `Promise<DiscoveredWorkspace | null>`
+
+```ts
+interface DiscoveredWorkspace {
+  readonly source: "pnpm-workspace" | "npm-workspace" | "single-package";
+  readonly packages: ReadonlyArray<string>;
+}
+```
+
+```ts
+const detected = await discoverFromCwd(process.cwd());
+if (detected !== null) {
+  console.log(`Found ${detected.packages.length} packages in ${detected.source}`);
+}
+```
+
+### `checkPackageStatuses(packages)` and `findUnconfiguredPackages(packages)`
+
+Both call `npm trust list <pkg>` (to detect existing OIDC trust) and `npm view <pkg>` (to detect publication) for each package.
+
+`checkPackageStatuses` returns the full status of every package — useful for orchestration code (e.g. a wizard) that needs to differentiate "unpublished" from "missing trust":
+
+```ts
+interface PackageStatus {
+  readonly pkg: string;
+  readonly trustConfigured: boolean;
+  readonly published: boolean;
+}
+```
+
+`findUnconfiguredPackages` is a convenience filter over the same data — keeps any package that lacks trust **or** isn't yet published.
+
+```ts
+const statuses = checkPackageStatuses(["@myorg/foo", "@myorg/new"]);
+const unconfigured = findUnconfiguredPackages(["@myorg/foo", "@myorg/new"]);
 ```
 
 ### `configureTrust(options)`

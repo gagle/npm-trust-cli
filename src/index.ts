@@ -1,3 +1,4 @@
+export { checkPackageStatuses, findUnconfiguredPackages } from "./diff.js";
 export { discoverPackages } from "./discover.js";
 export { discoverFromCwd, parsePnpmWorkspacePackages } from "./discover-workspace.js";
 export { configureTrust, listTrust } from "./trust.js";
@@ -7,6 +8,7 @@ export type {
   DiscoveredWorkspace,
   ListTrustOptions,
   Logger,
+  PackageStatus,
   RuntimeLogger,
   TrustResult,
   TrustSummary,

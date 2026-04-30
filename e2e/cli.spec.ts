@@ -178,6 +178,71 @@ describe("CLI e2e", () => {
     });
   });
 
+  describe("when --only-new finds nothing left to configure", () => {
+    let result: RunCliResult;
+
+    beforeEach(async () => {
+      result = await runCli({
+        args: ["--packages", "@x/already", "--repo", "o/r", "--workflow", "w.yml", "--only-new"],
+        fakeNpm: {
+          responses: [
+            { exitCode: 0, stdout: "github:o/r release.yml" },
+            { exitCode: 0, stdout: "@x/already" },
+          ],
+        },
+      });
+    });
+
+    it("should exit 0", () => {
+      expect(result.exitCode).toBe(0);
+    });
+
+    it("should report nothing was left to configure", () => {
+      expect(result.stdout).toContain("All packages already have OIDC trust");
+    });
+  });
+
+  describe("when --only-new keeps the unconfigured packages", () => {
+    let result: RunCliResult;
+
+    beforeEach(async () => {
+      result = await runCli({
+        args: [
+          "--packages",
+          "@x/old",
+          "--packages",
+          "@x/new",
+          "--repo",
+          "o/r",
+          "--workflow",
+          "w.yml",
+          "--only-new",
+          "--dry-run",
+        ],
+        fakeNpm: {
+          responses: [
+            { exitCode: 0, stdout: "github:o/r release.yml" },
+            { exitCode: 0, stdout: "@x/old" },
+            { exitCode: 0, stdout: "" },
+            { exitCode: 1, stderr: "npm error 404" },
+          ],
+        },
+      });
+    });
+
+    it("should exit 0", () => {
+      expect(result.exitCode).toBe(0);
+    });
+
+    it("should mention only the new package in the dry-run output", () => {
+      expect(result.stdout).toContain("@x/new");
+    });
+
+    it("should report the filter ratio", () => {
+      expect(result.stdout).toContain("2 → 1");
+    });
+  });
+
   describe("when --packages is supplied without --repo", () => {
     let result: RunCliResult;
 

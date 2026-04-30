@@ -6,6 +6,7 @@ export interface CliOptions {
   readonly list?: boolean;
   readonly dryRun?: boolean;
   readonly auto?: boolean;
+  readonly onlyNew?: boolean;
 }
 
 export type WorkspaceSource = "pnpm-workspace" | "npm-workspace" | "single-package";
@@ -13,6 +14,12 @@ export type WorkspaceSource = "pnpm-workspace" | "npm-workspace" | "single-packa
 export interface DiscoveredWorkspace {
   readonly source: WorkspaceSource;
   readonly packages: ReadonlyArray<string>;
+}
+
+export interface PackageStatus {
+  readonly pkg: string;
+  readonly trustConfigured: boolean;
+  readonly published: boolean;
 }
 
 export type TrustResult = "configured" | "already" | "not_published" | "auth_failed" | "error";

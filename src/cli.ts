@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { parseArgs } from "node:util";
+import { findUnconfiguredPackages } from "./diff.js";
 import { discoverPackages } from "./discover.js";
 import { discoverFromCwd } from "./discover-workspace.js";
 import type {
@@ -85,6 +86,7 @@ Options:
   --repo <owner/repo>    GitHub repository (e.g. gagle/ncbijs)
   --workflow <file>      GitHub Actions workflow file (e.g. release.yml)
   --list                 list current trust status instead of configuring
+  --only-new             filter to packages that have no OIDC trust yet or are unpublished
   --dry-run              show what would be done without making changes
   --help                 show this help message
 
@@ -109,6 +111,7 @@ export function parseCliArgs(argv: ReadonlyArray<string>): ParseCliArgsResult {
       list: { type: "boolean", default: false },
       "dry-run": { type: "boolean", default: false },
       auto: { type: "boolean", default: false },
+      "only-new": { type: "boolean", default: false },
       help: { type: "boolean", default: false },
     },
     allowPositionals: true,
@@ -132,6 +135,7 @@ export function parseCliArgs(argv: ReadonlyArray<string>): ParseCliArgsResult {
       list: Boolean(values.list),
       dryRun: Boolean(values["dry-run"]),
       auto: Boolean(values.auto),
+      onlyNew: Boolean(values["only-new"]),
     },
   };
 }
@@ -226,8 +230,21 @@ export async function runCli(
 
     validatePackages(packages);
 
+    let workingPackages = packages;
+    if (options.onlyNew) {
+      logger.log(`Checking which of ${packages.length} packages need OIDC trust...`);
+      const filtered = findUnconfiguredPackages(packages);
+      logger.log(`Filtered: ${packages.length} → ${filtered.length} packages need configuration`);
+      logger.log("");
+      if (filtered.length === 0) {
+        logger.log("All packages already have OIDC trust configured.");
+        return 0;
+      }
+      workingPackages = filtered;
+    }
+
     if (options.list) {
-      listTrust({ packages, logger });
+      listTrust({ packages: workingPackages, logger });
       return 0;
     }
 
@@ -245,7 +262,7 @@ export async function runCli(
     validateWorkflow(options.workflow);
 
     const summary = configureTrust({
-      packages,
+      packages: workingPackages,
       repo: options.repo,
       workflow: options.workflow,
       dryRun: Boolean(options.dryRun),
