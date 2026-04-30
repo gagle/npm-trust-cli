@@ -2,7 +2,13 @@ import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { parseArgs } from "node:util";
 import { discoverPackages } from "./discover.js";
-import type { CliOptions, Logger, RuntimeLogger } from "./interfaces/cli.interface.js";
+import { discoverFromCwd } from "./discover-workspace.js";
+import type {
+  CliOptions,
+  Logger,
+  RuntimeLogger,
+  WorkspaceSource,
+} from "./interfaces/cli.interface.js";
 import { configureTrust, listTrust } from "./trust.js";
 
 const MIN_NODE_MAJOR = 24;
@@ -68,11 +74,14 @@ export function printUsage(logger: Logger = console): void {
 Usage:
   npm-trust-cli --scope <scope> --repo <owner/repo> --workflow <file>
   npm-trust-cli --packages <pkg1> <pkg2> --repo <owner/repo> --workflow <file>
+  npm-trust-cli --auto --repo <owner/repo> --workflow <file>
   npm-trust-cli --scope <scope> --list
 
 Options:
   --scope <scope>        npm org scope (e.g. @ncbijs) — discovers all packages
   --packages <pkg...>    explicit package names
+  --auto                 detect packages from the current directory
+                         (pnpm-workspace.yaml, package.json#workspaces, or single package.json)
   --repo <owner/repo>    GitHub repository (e.g. gagle/ncbijs)
   --workflow <file>      GitHub Actions workflow file (e.g. release.yml)
   --list                 list current trust status instead of configuring
@@ -99,6 +108,7 @@ export function parseCliArgs(argv: ReadonlyArray<string>): ParseCliArgsResult {
       workflow: { type: "string" },
       list: { type: "boolean", default: false },
       "dry-run": { type: "boolean", default: false },
+      auto: { type: "boolean", default: false },
       help: { type: "boolean", default: false },
     },
     allowPositionals: true,
@@ -121,6 +131,7 @@ export function parseCliArgs(argv: ReadonlyArray<string>): ParseCliArgsResult {
       workflow: values.workflow,
       list: Boolean(values.list),
       dryRun: Boolean(values["dry-run"]),
+      auto: Boolean(values.auto),
     },
   };
 }
@@ -154,6 +165,17 @@ function validatePackages(packages: ReadonlyArray<string>): void {
   }
 }
 
+function describeWorkspaceSource(source: WorkspaceSource): string {
+  switch (source) {
+    case "pnpm-workspace":
+      return "pnpm workspace";
+    case "npm-workspace":
+      return "npm/yarn workspace";
+    case "single-package":
+      return "single package";
+  }
+}
+
 export async function runCli(
   argv: ReadonlyArray<string>,
   logger: RuntimeLogger = console,
@@ -177,8 +199,22 @@ export async function runCli(
       packages = await discoverPackages(options.scope);
       logger.log(`Found ${packages.length} packages`);
       logger.log("");
+    } else if (options.auto) {
+      const discovered = await discoverFromCwd(process.cwd());
+      if (discovered === null) {
+        logger.error("Error: --auto could not detect any packages from the current directory.");
+        logger.error(
+          "Looked for: pnpm-workspace.yaml, package.json#workspaces, ./package.json with name.",
+        );
+        return 1;
+      }
+      packages = discovered.packages;
+      logger.log(
+        `Detected ${describeWorkspaceSource(discovered.source)} — found ${packages.length} packages`,
+      );
+      logger.log("");
     } else {
-      logger.error("Error: --scope or --packages is required");
+      logger.error("Error: --auto, --scope, or --packages is required");
       logger.error("Run with --help for usage");
       return 1;
     }

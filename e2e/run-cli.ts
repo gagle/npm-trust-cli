@@ -1,7 +1,7 @@
 import { execa, type Options as ExecaOptions } from "execa";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -24,6 +24,7 @@ export interface RunCliOptions {
   readonly fakeNpm?: FakeNpmScript;
   readonly env?: Record<string, string>;
   readonly registryUrl?: string;
+  readonly workspaceFiles?: Readonly<Record<string, string>>;
 }
 
 export interface RunCliResult {
@@ -44,6 +45,17 @@ export async function runCli(options: RunCliOptions): Promise<RunCliResult> {
     writeFileSync(logPath, "");
     writeFileSync(counterPath, "0");
 
+    let workspaceCwd: string | null = null;
+    if (options.workspaceFiles) {
+      workspaceCwd = join(tmp, "workspace");
+      mkdirSync(workspaceCwd, { recursive: true });
+      for (const [relativePath, content] of Object.entries(options.workspaceFiles)) {
+        const fullPath = join(workspaceCwd, relativePath);
+        mkdirSync(dirname(fullPath), { recursive: true });
+        writeFileSync(fullPath, content);
+      }
+    }
+
     const env: ExecaOptions["env"] = {
       ...process.env,
       NPM_TRUST_CLI_NPM: FAKE_NPM,
@@ -55,6 +67,7 @@ export async function runCli(options: RunCliOptions): Promise<RunCliResult> {
     };
 
     const result = await execa("node", [CLI_ENTRY, ...options.args], {
+      cwd: workspaceCwd ?? undefined,
       env,
       reject: false,
       all: false,

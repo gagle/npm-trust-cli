@@ -5,6 +5,14 @@ export interface CliOptions {
   readonly workflow?: string;
   readonly list?: boolean;
   readonly dryRun?: boolean;
+  readonly auto?: boolean;
+}
+
+export type WorkspaceSource = "pnpm-workspace" | "npm-workspace" | "single-package";
+
+export interface DiscoveredWorkspace {
+  readonly source: WorkspaceSource;
+  readonly packages: ReadonlyArray<string>;
 }
 
 export type TrustResult = "configured" | "already" | "not_published" | "auth_failed" | "error";

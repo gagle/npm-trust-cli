@@ -86,7 +86,7 @@ describe("CLI e2e", () => {
     });
   });
 
-  describe("when no --scope and no --packages are given", () => {
+  describe("when no --auto, --scope, or --packages is given", () => {
     let result: RunCliResult;
 
     beforeEach(async () => {
@@ -97,8 +97,84 @@ describe("CLI e2e", () => {
       expect(result.exitCode).toBe(1);
     });
 
-    it("should print the --scope or --packages requirement", () => {
-      expect(result.stderr).toContain("--scope or --packages");
+    it("should print the requirement listing every entry mode", () => {
+      expect(result.stderr).toContain("--auto, --scope, or --packages");
+    });
+  });
+
+  describe("when --auto is used in a pnpm workspace fixture", () => {
+    let result: RunCliResult;
+
+    beforeEach(async () => {
+      result = await runCli({
+        args: ["--auto", "--repo", "o/r", "--workflow", "w.yml", "--dry-run"],
+        workspaceFiles: {
+          "pnpm-workspace.yaml": "packages:\n  - packages/*\n  - apps/*\n",
+          "packages/foo/package.json": JSON.stringify({ name: "@org/foo" }),
+          "packages/bar/package.json": JSON.stringify({ name: "@org/bar" }),
+          "apps/web/package.json": JSON.stringify({ name: "@org/web" }),
+        },
+      });
+    });
+
+    it("should exit 0", () => {
+      expect(result.exitCode).toBe(0);
+    });
+
+    it("should label the detected source", () => {
+      expect(result.stdout).toContain("Detected pnpm workspace");
+    });
+
+    it("should mention every discovered package in the dry-run output", () => {
+      expect(result.stdout).toContain("@org/foo");
+      expect(result.stdout).toContain("@org/bar");
+      expect(result.stdout).toContain("@org/web");
+    });
+  });
+
+  describe("when --auto is used in a single-package fixture", () => {
+    let result: RunCliResult;
+
+    beforeEach(async () => {
+      result = await runCli({
+        args: ["--auto", "--repo", "o/r", "--workflow", "w.yml", "--dry-run"],
+        workspaceFiles: {
+          "package.json": JSON.stringify({ name: "solo-pkg" }),
+        },
+      });
+    });
+
+    it("should exit 0", () => {
+      expect(result.exitCode).toBe(0);
+    });
+
+    it("should label the detected source as single package", () => {
+      expect(result.stdout).toContain("Detected single package");
+    });
+
+    it("should reference the single package name in the dry-run output", () => {
+      expect(result.stdout).toContain("solo-pkg");
+    });
+  });
+
+  describe("when --auto cannot detect any packages", () => {
+    let result: RunCliResult;
+
+    beforeEach(async () => {
+      result = await runCli({
+        args: ["--auto"],
+        workspaceFiles: {
+          "README.md": "no workspace files here",
+        },
+      });
+    });
+
+    it("should exit 1", () => {
+      expect(result.exitCode).toBe(1);
+    });
+
+    it("should hint at the files it looked for", () => {
+      expect(result.stderr).toContain("pnpm-workspace.yaml");
     });
   });
 

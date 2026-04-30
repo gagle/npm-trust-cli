@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const spawnSyncMock = vi.fn();
 const discoverPackagesMock = vi.fn();
+const discoverFromCwdMock = vi.fn();
 const configureTrustMock = vi.fn();
 const listTrustMock = vi.fn();
 
@@ -11,6 +12,10 @@ vi.mock("node:child_process", () => ({
 
 vi.mock("./discover.js", () => ({
   discoverPackages: (...args: ReadonlyArray<unknown>) => discoverPackagesMock(...args),
+}));
+
+vi.mock("./discover-workspace.js", () => ({
+  discoverFromCwd: (...args: ReadonlyArray<unknown>) => discoverFromCwdMock(...args),
 }));
 
 vi.mock("./trust.js", () => ({
@@ -375,7 +380,7 @@ describe("runCli", () => {
     });
   });
 
-  describe("when neither --scope nor --packages is set", () => {
+  describe("when neither --auto nor --scope nor --packages is set", () => {
     let logger: CapturingLogger;
     let exitCode: number;
 
@@ -388,8 +393,159 @@ describe("runCli", () => {
       expect(exitCode).toBe(1);
     });
 
-    it("should log a message about --scope or --packages", () => {
-      expect(logger.errors[0]).toContain("--scope or --packages");
+    it("should log a message about --auto, --scope, or --packages", () => {
+      expect(logger.errors[0]).toContain("--auto, --scope, or --packages");
+    });
+  });
+
+  describe("when --auto detects a pnpm workspace", () => {
+    let logger: CapturingLogger;
+    let exitCode: number;
+
+    beforeEach(async () => {
+      discoverFromCwdMock.mockResolvedValueOnce({
+        source: "pnpm-workspace",
+        packages: ["@org/a", "@org/b"],
+      });
+      configureTrustMock.mockReturnValueOnce({
+        configured: 2,
+        already: 0,
+        failed: 0,
+        failedPackages: [],
+      });
+      logger = createLogger();
+      exitCode = await runCli(["--auto", "--repo", "o/r", "--workflow", "w.yml"], logger);
+    });
+
+    it("should exit 0", () => {
+      expect(exitCode).toBe(0);
+    });
+
+    it("should forward the discovered packages to configureTrust", () => {
+      expect(configureTrustMock).toHaveBeenCalledWith(
+        expect.objectContaining({ packages: ["@org/a", "@org/b"] }),
+      );
+    });
+
+    it("should label the detected source in the output", () => {
+      expect(logger.logs.some((line) => line.includes("Detected pnpm workspace"))).toBe(true);
+    });
+  });
+
+  describe("when --auto detects an npm/yarn workspace", () => {
+    let logger: CapturingLogger;
+
+    beforeEach(async () => {
+      discoverFromCwdMock.mockResolvedValueOnce({
+        source: "npm-workspace",
+        packages: ["@org/a"],
+      });
+      configureTrustMock.mockReturnValueOnce({
+        configured: 1,
+        already: 0,
+        failed: 0,
+        failedPackages: [],
+      });
+      logger = createLogger();
+      await runCli(["--auto", "--repo", "o/r", "--workflow", "w.yml"], logger);
+    });
+
+    it("should label the detected source as npm/yarn workspace", () => {
+      expect(logger.logs.some((line) => line.includes("Detected npm/yarn workspace"))).toBe(true);
+    });
+  });
+
+  describe("when --auto detects a single package", () => {
+    let logger: CapturingLogger;
+
+    beforeEach(async () => {
+      discoverFromCwdMock.mockResolvedValueOnce({
+        source: "single-package",
+        packages: ["solo"],
+      });
+      configureTrustMock.mockReturnValueOnce({
+        configured: 1,
+        already: 0,
+        failed: 0,
+        failedPackages: [],
+      });
+      logger = createLogger();
+      await runCli(["--auto", "--repo", "o/r", "--workflow", "w.yml"], logger);
+    });
+
+    it("should label the detected source as single package", () => {
+      expect(logger.logs.some((line) => line.includes("Detected single package"))).toBe(true);
+    });
+  });
+
+  describe("when --auto cannot detect any packages", () => {
+    let logger: CapturingLogger;
+    let exitCode: number;
+
+    beforeEach(async () => {
+      discoverFromCwdMock.mockResolvedValueOnce(null);
+      logger = createLogger();
+      exitCode = await runCli(["--auto"], logger);
+    });
+
+    it("should return exit code 1", () => {
+      expect(exitCode).toBe(1);
+    });
+
+    it("should log a message naming the files it looked for", () => {
+      expect(logger.errors.some((line) => line.includes("pnpm-workspace.yaml"))).toBe(true);
+    });
+  });
+
+  describe("when --auto and --packages are both passed", () => {
+    let logger: CapturingLogger;
+
+    beforeEach(async () => {
+      configureTrustMock.mockReturnValueOnce({
+        configured: 1,
+        already: 0,
+        failed: 0,
+        failedPackages: [],
+      });
+      logger = createLogger();
+      await runCli(
+        ["--auto", "--packages", "@x/explicit", "--repo", "o/r", "--workflow", "w.yml"],
+        logger,
+      );
+    });
+
+    it("should give --packages precedence and skip auto-detection", () => {
+      expect(discoverFromCwdMock).not.toHaveBeenCalled();
+    });
+
+    it("should forward the explicit packages to configureTrust", () => {
+      expect(configureTrustMock).toHaveBeenCalledWith(
+        expect.objectContaining({ packages: ["@x/explicit"] }),
+      );
+    });
+  });
+
+  describe("when --auto and --scope are both passed", () => {
+    beforeEach(async () => {
+      discoverPackagesMock.mockResolvedValueOnce(["@scope/a"]);
+      configureTrustMock.mockReturnValueOnce({
+        configured: 1,
+        already: 0,
+        failed: 0,
+        failedPackages: [],
+      });
+      await runCli(
+        ["--auto", "--scope", "@scope", "--repo", "o/r", "--workflow", "w.yml"],
+        createLogger(),
+      );
+    });
+
+    it("should give --scope precedence and skip auto-detection", () => {
+      expect(discoverFromCwdMock).not.toHaveBeenCalled();
+    });
+
+    it("should call the registry discovery helper", () => {
+      expect(discoverPackagesMock).toHaveBeenCalledWith("@scope");
     });
   });
 
