@@ -121,7 +121,9 @@ npx npm-trust-cli --scope @myorg --repo myorg/repo --workflow release.yml --dry-
 | `--workflow <file>`   | GitHub Actions workflow filename (e.g. `release.yml`)                                      |
 | `--list`              | list current trust status instead of configuring                                           |
 | `--only-new`          | filter the resolved package list to those without OIDC trust yet, or not yet published     |
-| `--dry-run`           | show what would be done without making changes                                             |
+| `--doctor`            | print a structured health report (environment, repo, packages); exit 1 on `fail` issues   |
+| `--json`              | with `--doctor`, emit a machine-parseable JSON report instead of the human view            |
+| `--dry-run`            | show what would be done without making changes                                             |
 | `--help`              | show help message                                                                          |
 
 ## Example output
@@ -297,6 +299,38 @@ The same entry point used by the `bin` script. Useful for embedding the full CLI
 const code = await runCli(["--scope", "@myorg", "--list"]);
 process.exit(code);
 ```
+
+## Health check (`--doctor`)
+
+`--doctor` produces a single structured report covering everything an agent or
+human needs before running a trust setup: Node + npm versions, npm auth, the
+detected workspace, the GitHub remote, candidate workflow files, and per-
+package trust + provenance state. Plus a list of `issues` with stable codes.
+
+```bash
+npx npm-trust-cli --doctor                # human-readable, color when stdout is a TTY
+npx npm-trust-cli --doctor --json         # machine-parseable JSON for agents and CI
+```
+
+Exit code is `0` when no `fail`-severity issues exist, `1` otherwise. Warnings
+don't fail the gate. Stable issue codes (for agents to branch on):
+
+| Code | When |
+|---|---|
+| `NODE_TOO_OLD` (fail) | Node < 24 |
+| `NPM_TOO_OLD` / `NPM_UNREACHABLE` | npm < 11.5.1 or not on PATH |
+| `AUTH_NOT_LOGGED_IN` | `npm whoami` failed |
+| `AUTH_REGISTRY_UNUSUAL` | registry isn't `https://registry.npmjs.org` |
+| `WORKSPACE_NOT_DETECTED` / `WORKSPACE_EMPTY` | no signals or all packages private |
+| `REPO_NO_REMOTE` / `REPO_REMOTE_NOT_GITHUB` | no `origin` or non-GitHub origin |
+| `WORKFLOWS_NONE` / `WORKFLOWS_AMBIGUOUS` / `WORKFLOW_NOT_FOUND` | publish workflow problems |
+| `PACKAGE_NOT_PUBLISHED` | package not yet on the registry |
+| `PACKAGE_TRUST_DISCREPANCY` | `npm trust list` empty but registry has SLSA provenance for the package |
+| `REGISTRY_UNREACHABLE` | sentinel registry call failed |
+| `DOCTOR_FLAG_IGNORED` | `--auto` / `--scope` / `--packages` was supplied alongside `--doctor` and ignored |
+
+The JSON shape is `DoctorReport` from the public types. `schemaVersion` is
+versioned; consumers should switch on it before reading other fields.
 
 ## Use from a Claude Code agent
 

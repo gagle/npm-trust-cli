@@ -9,6 +9,7 @@ const configureTrustMock = vi.fn();
 const listTrustMock = vi.fn();
 const mkdirMock = vi.fn();
 const copyFileMock = vi.fn();
+const runDoctorMock = vi.fn();
 
 vi.mock("node:child_process", () => ({
   spawnSync: (...args: ReadonlyArray<unknown>) => spawnSyncMock(...args),
@@ -39,6 +40,10 @@ vi.mock("./diff.js", () => ({
 vi.mock("./trust.js", () => ({
   configureTrust: (...args: ReadonlyArray<unknown>) => configureTrustMock(...args),
   listTrust: (...args: ReadonlyArray<unknown>) => listTrustMock(...args),
+}));
+
+vi.mock("./doctor.js", () => ({
+  runDoctor: (...args: ReadonlyArray<unknown>) => runDoctorMock(...args),
 }));
 
 const { CliError, checkNodeVersion, checkNpmVersion, parseCliArgs, printUsage, runCli } =
@@ -1083,6 +1088,91 @@ describe("runCli", () => {
 
     it("should coerce the rejection value into the error log", () => {
       expect(logger.errors[0]).toBe("Error: plain string failure");
+    });
+  });
+
+  describe("when --doctor is set", () => {
+    let logger: CapturingLogger;
+    let exitCode: number;
+
+    beforeEach(async () => {
+      runDoctorMock.mockResolvedValueOnce(0);
+      logger = createLogger();
+      exitCode = await runCli(["--doctor"], logger);
+    });
+
+    it("should exit with the runDoctor return code", () => {
+      expect(exitCode).toBe(0);
+    });
+
+    it("should delegate to runDoctor with cwd, logger, and json: false", () => {
+      expect(runDoctorMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cwd: process.cwd(),
+          logger,
+          json: false,
+          conflictingFlags: [],
+        }),
+      );
+    });
+
+    it("should not run the npm version check first", () => {
+      expect(spawnSyncMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("when --doctor is set with --json", () => {
+    beforeEach(async () => {
+      runDoctorMock.mockResolvedValueOnce(0);
+      await runCli(["--doctor", "--json"], createLogger());
+    });
+
+    it("should pass json: true to runDoctor", () => {
+      expect(runDoctorMock).toHaveBeenCalledWith(expect.objectContaining({ json: true }));
+    });
+  });
+
+  describe("when --doctor is set with conflicting source flags", () => {
+    beforeEach(async () => {
+      runDoctorMock.mockResolvedValueOnce(0);
+      await runCli(
+        [
+          "--doctor",
+          "--auto",
+          "--scope",
+          "@x",
+          "--packages",
+          "@x/foo",
+          "--repo",
+          "o/r",
+          "--workflow",
+          "w.yml",
+        ],
+        createLogger(),
+      );
+    });
+
+    it("should pass each conflicting flag through to runDoctor as a warning input", () => {
+      expect(runDoctorMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conflictingFlags: ["--auto", "--scope", "--packages"],
+          repo: "o/r",
+          workflow: "w.yml",
+        }),
+      );
+    });
+  });
+
+  describe("when runDoctor reports a fail", () => {
+    let exitCode: number;
+
+    beforeEach(async () => {
+      runDoctorMock.mockResolvedValueOnce(1);
+      exitCode = await runCli(["--doctor"], createLogger());
+    });
+
+    it("should propagate the non-zero exit code", () => {
+      expect(exitCode).toBe(1);
     });
   });
 });

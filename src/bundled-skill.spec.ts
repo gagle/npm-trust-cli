@@ -76,4 +76,15 @@ describe("bundled setup-npm-trust skill", () => {
       expect(content).toContain("Verify the resolved version supports the flags");
     });
   });
+
+  describe("doctor integration", () => {
+    it("should describe the --doctor --json fast path for v0.4.0+ CLIs", () => {
+      expect(content).toContain("<CLI> --doctor --json");
+    });
+
+    it("should advertise backward compatibility with v0.2.0 and v0.3.0 CLIs", () => {
+      expect(content).toContain("v0.2.0");
+      expect(content).toContain("v0.3.0");
+    });
+  });
 });

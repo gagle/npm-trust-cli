@@ -65,7 +65,30 @@ If the result is `TOO_OLD`, the resolved binary predates `--auto` (added in
 v0.2.0). **Stop** and ask the user to upgrade with
 `npm i -g npm-trust-cli@latest` (or remove the cached version that resolved).
 
-## Phase 1 — Discover
+## Phase 1 — Discover (one call when --doctor is supported)
+
+If the resolved CLI supports `--doctor` (added in v0.4.0), the entire Phase 1
+sequence below collapses to a single call:
+
+```bash
+<CLI> --doctor --json
+```
+
+The JSON has the shape `{ schemaVersion: 1, runtime, auth, workspace, repo,
+workflows, packages, issues, summary }`. Branch on:
+
+- `summary.fail > 0` — STOP. The environment can't run the trust setup.
+- `issues[]` — surface every `code` to the user, with the included `remedy`
+  text where present. Notable codes: `AUTH_NOT_LOGGED_IN`,
+  `WORKSPACE_NOT_DETECTED`, `WORKFLOWS_AMBIGUOUS`, `PACKAGE_NOT_PUBLISHED`,
+  `PACKAGE_TRUST_DISCREPANCY`.
+- `workspace.packages[]` — the detected package list.
+- `repo.inferredSlug` — `<owner/repo>` for the configure call.
+- `workflows[]` — candidate workflow files; if length === 1, suggest it.
+
+If `--doctor` is not present in `<CLI> --help`, fall back to the per-step
+discovery below. The skill is fully backward-compatible with v0.2.0 and
+v0.3.0 CLIs.
 
 ### 1. Detect the workspace shape
 
@@ -243,6 +266,4 @@ If `Z > 0`, remind the user that those packages still need publishing.
 - The wizard never runs destructive commands; everything it executes is
   read-only or `npm trust github` (which is idempotent — re-running on an
   already-configured package returns "already configured").
-- If a future `--doctor` flag is available on the resolved CLI, the entire
-  Pre-flight + Phase 1 sequence collapses to a single `<CLI> --doctor --json`
-  call. See the project's roadmap.
+- `--doctor` is the fast path for v0.4.0+ CLIs (see Phase 1 opener above).

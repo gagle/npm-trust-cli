@@ -7,6 +7,7 @@ import { parseArgs } from "node:util";
 import { findUnconfiguredPackages } from "./diff.js";
 import { discoverPackages } from "./discover.js";
 import { discoverFromCwd } from "./discover-workspace.js";
+import { runDoctor } from "./doctor.js";
 import type {
   CliOptions,
   Logger,
@@ -92,6 +93,8 @@ Options:
   --only-new             filter to packages that have no OIDC trust yet or are unpublished
   --dry-run              show what would be done without making changes
   --init-skill           install the bundled Claude Code skill into ./.claude/skills
+  --doctor               print a structured environment + per-package health report
+  --json                 emit machine-readable JSON (only meaningful with --doctor)
   --help                 show this help message
 
 Note: 'npm trust' uses web-based 2FA only. The first call opens a browser
@@ -117,6 +120,8 @@ export function parseCliArgs(argv: ReadonlyArray<string>): ParseCliArgsResult {
       auto: { type: "boolean", default: false },
       "only-new": { type: "boolean", default: false },
       "init-skill": { type: "boolean", default: false },
+      doctor: { type: "boolean", default: false },
+      json: { type: "boolean", default: false },
       help: { type: "boolean", default: false },
     },
     allowPositionals: true,
@@ -142,6 +147,8 @@ export function parseCliArgs(argv: ReadonlyArray<string>): ParseCliArgsResult {
       auto: Boolean(values.auto),
       onlyNew: Boolean(values["only-new"]),
       initSkill: Boolean(values["init-skill"]),
+      doctor: Boolean(values.doctor),
+      json: Boolean(values.json),
     },
   };
 }
@@ -173,6 +180,20 @@ function validatePackages(packages: ReadonlyArray<string>): void {
       );
     }
   }
+}
+
+function collectDoctorConflicts(options: CliOptions): ReadonlyArray<string> {
+  const conflicts: Array<string> = [];
+  if (options.auto) {
+    conflicts.push("--auto");
+  }
+  if (typeof options.scope === "string" && options.scope !== "") {
+    conflicts.push("--scope");
+  }
+  if (options.packages !== undefined && options.packages.length > 0) {
+    conflicts.push("--packages");
+  }
+  return conflicts;
 }
 
 function describeWorkspaceSource(source: WorkspaceSource): string {
@@ -233,6 +254,17 @@ export async function runCli(
 
     if (options.initSkill) {
       return await initSkill(process.cwd(), logger);
+    }
+
+    if (options.doctor) {
+      return await runDoctor({
+        cwd: process.cwd(),
+        repo: options.repo,
+        workflow: options.workflow,
+        json: Boolean(options.json),
+        logger,
+        conflictingFlags: collectDoctorConflicts(options),
+      });
     }
 
     checkNodeVersion();

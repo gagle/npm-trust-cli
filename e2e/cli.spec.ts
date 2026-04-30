@@ -588,6 +588,28 @@ describe("CLI e2e", () => {
     });
   });
 
+  describe("when --doctor --json is invoked in a single-package directory", () => {
+    let result: RunCliResult;
+
+    beforeEach(async () => {
+      result = await runCli({
+        args: ["--doctor", "--json"],
+        workspaceFiles: { "package.json": JSON.stringify({ name: "test-pkg" }) },
+      });
+    });
+
+    it("should emit parseable JSON to stdout", () => {
+      const parsed = JSON.parse(result.stdout);
+      expect(parsed.schemaVersion).toBe(1);
+    });
+
+    it("should include the workspace detection result", () => {
+      const parsed = JSON.parse(result.stdout);
+      expect(parsed.workspace?.source).toBe("single-package");
+      expect(parsed.workspace?.packages).toContain("test-pkg");
+    });
+  });
+
   describe("when --init-skill runs twice in the same directory", () => {
     let secondResult: RunCliResult;
 
