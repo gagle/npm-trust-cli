@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/gagle/npm-trust-cli/compare/v0.2.0...v0.3.0) (2026-04-30)
+
+### Features
+
+- cross-check OIDC trust state against the registry's SLSA provenance attestation. `checkPackageStatuses` now returns `hasProvenance: boolean` per package, and `findUnconfiguredPackages` keeps a package only when it has neither an explicit trust record nor a provenance attestation. Catches the common case where Trusted Publishing was configured via npm's web UI rather than `npm trust github`, where `npm trust list` reports empty but OIDC publishing actually works ([58333bd](https://github.com/gagle/npm-trust-cli/commit/58333bd))
+- harden the bundled `setup-npm-trust` skill: introduce a `<CLI>` placeholder + Pre-flight section that resolves the right invocation in priority order (source checkout → devDep → global → `npx -y npm-trust-cli@latest`); add a version-compat gate so an old cached install fails loudly at the top instead of three steps in; promote `npm whoami` from a soft suggestion to a hard STOP gate before the configure step; add a pre-flight `--dry-run` step before the actual configure call so typos in `--repo`/`--workflow` surface without burning a 2FA round-trip ([58333bd](https://github.com/gagle/npm-trust-cli/commit/58333bd))
+
 ## [0.2.0](https://github.com/gagle/npm-trust-cli/compare/v0.1.0...v0.2.0) (2026-04-30)
 
 ### Features
